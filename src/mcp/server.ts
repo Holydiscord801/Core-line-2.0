@@ -98,7 +98,7 @@ const tools: Tool[] = [
         },
         limit: {
           type: 'number',
-          description: 'Maximum number of jobs to return. Default 50.',
+          description: 'Maximum number of jobs to return. Default 20.',
         },
       },
       required: [],
@@ -357,7 +357,7 @@ async function getBattlePlan(date?: string): Promise<V2BattlePlan | null> {
   return data as V2BattlePlan | null;
 }
 
-async function getJobs(status?: JobStatus, limit: number = 50): Promise<V2Job[]> {
+async function getJobs(status?: JobStatus, limit: number = 20): Promise<V2Job[]> {
   const userId = requireAuth();
 
   let query = supabase
@@ -626,7 +626,7 @@ async function getPipelineSummary(): Promise<PipelineSummary> {
   // Get all jobs
   const { data: jobs } = await supabase
     .from('v2_jobs')
-    .select('status, created_at')
+    .select('status')
     .eq('user_id', userId);
 
   // Count by status
@@ -640,19 +640,16 @@ async function getPipelineSummary(): Promise<PipelineSummary> {
     rejected: 0,
   };
 
-  let totalDaysInPipeline = 0;
   (jobs || []).forEach((job: any) => {
     jobsByStatus[job.status as JobStatus]++;
-    const daysIn = Math.floor(
-      (Date.now() - new Date(job.created_at).getTime()) / (1000 * 60 * 60 * 24)
-    );
-    totalDaysInPipeline += daysIn;
   });
+
+  const totalApplied = jobsByStatus.applied + jobsByStatus.interviewing + jobsByStatus.offer + jobsByStatus.closed + jobsByStatus.rejected;
 
   // Get outreach stats
   const { data: outreach } = await supabase
     .from('v2_outreach')
-    .select('response_received')
+    .select('response_received, contact_id, sent_at')
     .eq('user_id', userId);
 
   const totalOutreach = outreach?.length || 0;
@@ -667,16 +664,25 @@ async function getPipelineSummary(): Promise<PipelineSummary> {
     .eq('status', 'pending')
     .lt('due_date', today);
 
+  // Active relationships (contacts with outreach in last 30 days)
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  const activeContactIds = new Set(
+    (outreach || [])
+      .filter((o: any) => o.contact_id && new Date(o.sent_at) >= thirtyDaysAgo)
+      .map((o: any) => o.contact_id)
+  );
+
   const totalJobs = jobs?.length || 0;
   const interviewingOrBetter = jobsByStatus.interviewing + jobsByStatus.offer;
 
   return {
-    total_jobs: totalJobs,
     jobs_by_status: jobsByStatus,
-    response_rate: totalOutreach > 0 ? (responsesReceived / totalOutreach) * 100 : 0,
-    interview_rate: totalJobs > 0 ? (interviewingOrBetter / totalJobs) * 100 : 0,
-    avg_days_in_pipeline: totalJobs > 0 ? Math.round(totalDaysInPipeline / totalJobs) : 0,
+    total_applied: totalApplied,
+    response_rate: totalOutreach > 0 ? Math.round((responsesReceived / totalOutreach) * 100) : 0,
+    interview_rate: totalJobs > 0 ? Math.round((interviewingOrBetter / totalJobs) * 100) : 0,
     overdue_followups: overdueCount || 0,
+    active_relationships: activeContactIds.size,
   };
 }
 
@@ -747,12 +753,6 @@ async function snoozeFollowup(followupId: string, days: number): Promise<V2Follo
   if (error || !data) {
     throw new Error(`Error snoozing follow-up: ${error?.message || 'Not found'}`);
   }
-
-  // Change status back to pending after snooze
-  await supabase
-    .from('v2_followups')
-    .update({ status: 'pending' })
-    .eq('id', followupId);
 
   return data as V2Followup;
 }

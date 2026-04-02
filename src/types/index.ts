@@ -219,12 +219,12 @@ export interface CreateOutreachInput {
 }
 
 export interface PipelineSummary {
-  total_jobs: number;
   jobs_by_status: Record<JobStatus, number>;
+  total_applied: number;
   response_rate: number;
   interview_rate: number;
-  avg_days_in_pipeline: number;
   overdue_followups: number;
+  active_relationships: number;
 }
 
 // ============================================
