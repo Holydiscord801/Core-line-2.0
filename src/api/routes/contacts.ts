@@ -1,0 +1,99 @@
+import { Router, Request, Response } from 'express';
+import { supabase } from '../../lib/supabase.js';
+
+const router = Router();
+
+// GET /api/contacts
+router.get('/', async (req: Request, res: Response) => {
+  try {
+    const { job_id } = req.query;
+
+    if (job_id) {
+      const { data, error } = await supabase
+        .from('v2_job_contacts')
+        .select(`
+          contact_id,
+          relevance_notes,
+          v2_contacts (*)
+        `)
+        .eq('job_id', job_id as string);
+
+      if (error) {
+        res.status(500).json({ error: error.message });
+        return;
+      }
+
+      const contacts = (data || []).map((jc: any) => ({
+        ...jc.v2_contacts,
+        relevance_notes: jc.relevance_notes,
+      }));
+
+      res.json({ contacts });
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('v2_contacts')
+      .select('*')
+      .eq('user_id', req.userId!)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      res.status(500).json({ error: error.message });
+      return;
+    }
+
+    res.json({ contacts: data });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch contacts' });
+  }
+});
+
+// POST /api/contacts
+router.post('/', async (req: Request, res: Response) => {
+  try {
+    const { name, title, company, linkedin_url, email, phone, relationship_type, notes, job_id } = req.body;
+
+    if (!name) {
+      res.status(400).json({ error: 'name is required' });
+      return;
+    }
+
+    const { data: contact, error } = await supabase
+      .from('v2_contacts')
+      .insert({
+        user_id: req.userId!,
+        name,
+        title,
+        company,
+        linkedin_url,
+        email,
+        phone,
+        relationship_type,
+        notes,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      res.status(500).json({ error: error.message });
+      return;
+    }
+
+    // Link to job if provided
+    if (job_id && contact) {
+      await supabase
+        .from('v2_job_contacts')
+        .insert({
+          job_id,
+          contact_id: contact.id,
+        });
+    }
+
+    res.status(201).json(contact);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to create contact' });
+  }
+});
+
+export default router;
