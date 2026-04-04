@@ -577,6 +577,7 @@ body::before{content:'';position:fixed;top:-200px;left:50%;transform:translateX(
           <span class="feed-title">AI Activity</span>
           <span class="feed-live">LIVE</span>
         </div>
+        <div id="warroom-urgent-feed"></div>
         <div class="feed-item">
           <div class="feed-icon ai">&#129302;</div>
           <div class="feed-body">
@@ -822,12 +823,15 @@ body::before{content:'';position:fixed;top:-200px;left:50%;transform:translateX(
 
   <!-- ===== AI ACTIVITY VIEW (stub) ===== -->
   <div class="main hidden" id="view-activity">
-    <div class="stub-view">
-      <div class="empty-state">
-        <div class="empty-state-icon">&#129504;</div>
-        <div class="empty-state-title">AI Activity Log</div>
-        <div class="empty-state-text">When your connected AI takes actions on your behalf, they will appear here. Connect an AI to get started.</div>
-        <button class="btn btn-primary" style="margin-top:20px" onclick="openModal('connectModal')">Connect AI</button>
+    <div>
+      <div class="section-header">
+        <div class="section-title">&#129504; AI Activity</div>
+        <div class="section-meta">Recent actions across your pipeline</div>
+      </div>
+      <div class="feed" id="activityFeed" style="max-height:none">
+        <div class="empty-state" style="padding:60px">
+          <div class="empty-state-text">Loading activity...</div>
+        </div>
       </div>
     </div>
   </div>
@@ -1487,6 +1491,7 @@ async function refreshCurrentView() {
     case 'outreach': await loadAndRenderOutreach(); break;
     case 'followups': await loadAndRenderFollowups(); break;
     case 'apikeys': await loadAndRenderApiKeys(); break;
+    case 'activity': await loadAndRenderActivity(); break;
     case 'autopilot': await loadAutopilotSettings(); break;
   }
 }
@@ -1499,6 +1504,7 @@ function renderWarRoom() {
   renderStats();
   renderBattleGrid();
   renderWarmContacts();
+  renderWarRoomFollowupAlert();
 }
 
 function renderStats() {
@@ -1506,6 +1512,7 @@ function renderStats() {
   const pipelineCount = cachedJobs.filter(j => j.status === 'applied' || j.status === 'interviewing').length;
   const warmCount = cachedContacts.filter(c => (c.warmth_score || 0) > 0).length;
   const responseRate = cachedSummary?.response_rate || 0;
+  const overdueCount = cachedSummary?.overdue_followups || 0;
 
   document.getElementById('warroom-meta').textContent = `${cachedJobs.length} total targets tracked`;
 
@@ -1520,10 +1527,10 @@ function renderStats() {
       <div class="stat-label">In Pipeline</div>
       <div class="stat-delta neutral">applied + interviewing</div>
     </div>
-    <div class="stat-card" style="--glow-color:var(--cyan)">
-      <div class="stat-num" style="color:var(--cyan)">${warmCount}</div>
-      <div class="stat-label">Warm Contacts</div>
-      <div class="stat-delta neutral">${cachedContacts.length} total contacts</div>
+    <div class="stat-card" style="--glow-color:${overdueCount > 0 ? 'var(--red)' : 'var(--cyan)'}">
+      <div class="stat-num" style="color:${overdueCount > 0 ? 'var(--red)' : 'var(--cyan)'}" id="warroom-overdue-count">${overdueCount > 0 ? overdueCount : warmCount}</div>
+      <div class="stat-label">${overdueCount > 0 ? 'Overdue Follow-ups' : 'Warm Contacts'}</div>
+      <div class="stat-delta ${overdueCount > 0 ? 'up' : 'neutral'}" style="color:${overdueCount > 0 ? 'var(--red)' : ''}">${overdueCount > 0 ? 'Action needed today' : cachedContacts.length + ' total contacts'}</div>
     </div>
     <div class="stat-card" style="--glow-color:var(--green)">
       <div class="stat-num" style="color:var(--green)">${responseRate}%</div>
@@ -1766,6 +1773,51 @@ function renderContactCard(c) {
         <div class="contact-warmth">${dots}</div>
       </div>
     </div>`;
+}
+
+async function renderWarRoomFollowupAlert() {
+  // Fetch followups if not cached
+  if (!cachedFollowups || cachedFollowups.length === 0) {
+    try {
+      const res = await api('/followups?days_ahead=7');
+      cachedFollowups = res?.followups || res || [];
+      if (Array.isArray(cachedFollowups)) {
+        // already good
+      } else {
+        cachedFollowups = [];
+      }
+    } catch (e) {
+      cachedFollowups = [];
+    }
+  }
+
+  const today = new Date().toISOString().split('T')[0];
+  const overdue = (cachedFollowups || []).filter(f => f.due_date && f.due_date < today);
+
+  // Update the overdue count in stats
+  const overdueEl = document.getElementById('warroom-overdue-count');
+  if (overdueEl) {
+    overdueEl.textContent = overdue.length;
+    overdueEl.closest('.stat-card').style.display = '';
+  }
+
+  // Show top 3 urgent followups in the activity feed
+  const feedEl = document.getElementById('warroom-urgent-feed');
+  if (feedEl && overdue.length > 0) {
+    feedEl.innerHTML = overdue.slice(0, 3).map(f => {
+      const contactName = f.v2_contacts?.name || 'Unknown';
+      const company = f.v2_jobs?.company || f.v2_contacts?.company || '';
+      const daysOverdue = Math.floor((new Date().getTime() - new Date(f.due_date).getTime()) / (1000 * 60 * 60 * 24));
+      return `
+        <div class="feed-item" style="border-left:2px solid var(--red)">
+          <div class="feed-icon" style="background:rgba(239,68,68,.15)">&#128276;</div>
+          <div class="feed-body">
+            <div class="feed-agent" style="color:var(--red)">OVERDUE - ${daysOverdue}d</div>
+            <div class="feed-text">Follow up with <strong>${esc(contactName)}</strong>${company ? ` at ${esc(company)}` : ''}</div>
+          </div>
+        </div>`;
+    }).join('');
+  }
 }
 
 // ============================================
@@ -2367,6 +2419,13 @@ function renderNetwork() {
 
   const sorted = [...cachedContacts].sort((a, b) => (b.warmth_score || 0) - (a.warmth_score || 0));
 
+  // Count jobs per contact by company match
+  const jobsByCompany = {};
+  cachedJobs.forEach(j => {
+    if (!jobsByCompany[j.company]) jobsByCompany[j.company] = [];
+    jobsByCompany[j.company].push(j);
+  });
+
   grid.innerHTML = sorted.map(c => {
     const initial = (c.name || '?').charAt(0).toUpperCase();
     const gradients = [
@@ -2378,34 +2437,65 @@ function renderNetwork() {
       'linear-gradient(135deg,#8b5cf6,#ec4899)',
     ];
     const grad = gradients[initial.charCodeAt(0) % gradients.length];
-    const warmth = Math.min(5, Math.round((c.warmth_score || 0) / 20));
+    const warmth = c.warmth_score || 0;
+    const warmthLevel = warmth > 80 ? 'on_fire' : warmth > 60 ? 'hot' : warmth > 40 ? 'warm' : warmth > 20 ? 'cool' : 'cold';
+    const warmthColor = warmth > 80 ? 'var(--green)' : warmth > 60 ? 'var(--orange)' : warmth > 40 ? 'var(--yellow)' : warmth > 20 ? 'var(--cyan)' : 'var(--dim)';
+    const warmthPct = Math.min(100, warmth);
 
-    let dots = '';
-    for (let i = 0; i < 5; i++) {
-      if (i < warmth) dots += '<div class="warmth-dot filled"></div>';
-      else if (i === warmth && (c.warmth_score || 0) % 20 >= 10) dots += '<div class="warmth-dot partial"></div>';
-      else dots += '<div class="warmth-dot"></div>';
-    }
+    // Count jobs linked to this contact's company
+    const companyJobs = jobsByCompany[c.company] || [];
+    const multiJob = companyJobs.length > 1;
 
     const relType = c.relationship_type || 'other';
     const relLabel = relType.replace(/_/g, ' ');
+    const lastContact = c.last_contacted_at ? timeAgo(c.last_contacted_at) : 'Never';
 
     return `
-      <div class="contact-card" style="flex-direction:column;align-items:flex-start">
+      <div class="contact-card" style="flex-direction:column;align-items:flex-start" onclick="toggleContactExpand(this)">
         <div style="display:flex;gap:12px;align-items:center;width:100%">
           <div class="contact-avatar" style="background:${grad}">${initial}</div>
-          <div class="contact-info">
-            <div class="contact-name">${esc(c.name)}</div>
+          <div class="contact-info" style="flex:1">
+            <div style="display:flex;align-items:center;gap:8px">
+              <div class="contact-name">${esc(c.name)}</div>
+              ${multiJob ? `<span style="font-size:10px;font-weight:700;background:rgba(99,102,241,.12);color:var(--accent);padding:2px 8px;border-radius:10px;border:1px solid rgba(99,102,241,.2)">${companyJobs.length} jobs</span>` : ''}
+            </div>
             ${c.title ? `<div class="contact-title">${esc(c.title)}</div>` : ''}
             ${c.company ? `<div class="contact-company">${esc(c.company)}</div>` : ''}
           </div>
+          <span class="relationship-badge rel-${relType}" style="flex-shrink:0">${relLabel}</span>
         </div>
         <div style="display:flex;align-items:center;gap:12px;margin-top:10px;width:100%">
-          <div class="contact-warmth">${dots}</div>
-          <span class="relationship-badge rel-${relType}">${relLabel}</span>
+          <div style="flex:1;height:4px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden">
+            <div style="height:100%;width:${warmthPct}%;background:${warmthColor};border-radius:2px;transition:width .3s"></div>
+          </div>
+          <span style="font-size:11px;font-weight:600;color:${warmthColor};min-width:30px">${warmth}</span>
+        </div>
+        <div style="display:flex;gap:16px;margin-top:6px;font-size:11px;color:var(--dim)">
+          <span>Last: ${lastContact}</span>
+          ${c.response_count > 0 ? `<span style="color:var(--green)">${c.response_count} response${c.response_count !== 1 ? 's' : ''}</span>` : ''}
+          ${c.email ? `<span style="color:var(--cyan)">${esc(c.email)}</span>` : ''}
+        </div>
+        <div class="contact-expand" style="display:none;width:100%;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+          ${companyJobs.length > 0 ? `
+            <div style="font-size:11px;font-weight:700;color:var(--dim);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Linked Jobs</div>
+            ${companyJobs.map(j => `
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:12px">
+                <span style="color:var(--text)">${esc(j.title)}</span>
+                <span class="tag" style="font-size:10px;padding:2px 6px;color:var(--dim);border-color:var(--border)">${formatStatus(j.status)}</span>
+                ${j.fit_score ? `<span style="font-size:10px;color:${j.fit_score >= 80 ? 'var(--green)' : j.fit_score >= 60 ? 'var(--yellow)' : 'var(--dim)'}">${j.fit_score}%</span>` : ''}
+              </div>`).join('')}
+          ` : ''}
+          ${c.linkedin_url ? `<a href="${esc(c.linkedin_url)}" target="_blank" style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--cyan);text-decoration:none;margin-top:8px">&#128279; LinkedIn Profile</a>` : ''}
         </div>
       </div>`;
   }).join('');
+}
+
+function toggleContactExpand(card) {
+  const expand = card.querySelector('.contact-expand');
+  if (expand) {
+    expand.style.display = expand.style.display === 'none' ? 'block' : 'none';
+  }
 }
 
 // ============================================
@@ -2433,32 +2523,75 @@ function renderOutreach() {
     return;
   }
 
-  list.innerHTML = cachedOutreach.map(o => {
-    const channelIcons = { email: '&#9993;&#65039;', linkedin: '&#128279;', phone: '&#128222;', in_person: '&#129309;' };
+  // Status filter row
+  const sentCount = cachedOutreach.filter(o => o.sent_at && !o.response_received).length;
+  const respondedCount = cachedOutreach.filter(o => o.response_received).length;
+  const draftCount = cachedOutreach.filter(o => !o.sent_at).length;
+
+  const filterHtml = `
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+      <button class="btn btn-ghost btn-sm outreach-filter active" onclick="filterOutreach('all', this)" style="font-size:11px">All (${cachedOutreach.length})</button>
+      <button class="btn btn-ghost btn-sm outreach-filter" onclick="filterOutreach('sent', this)" style="font-size:11px">Sent (${sentCount})</button>
+      <button class="btn btn-ghost btn-sm outreach-filter" onclick="filterOutreach('responded', this)" style="font-size:11px">Responded (${respondedCount})</button>
+      <button class="btn btn-ghost btn-sm outreach-filter" onclick="filterOutreach('draft', this)" style="font-size:11px">Drafts (${draftCount})</button>
+    </div>`;
+
+  const channelIcons = { email: '&#9993;&#65039;', linkedin: '&#128279;', phone: '&#128222;', in_person: '&#129309;' };
+  const outcomeColors = {
+    no_response: 'var(--dim)',
+    positive: 'var(--green)',
+    negative: 'var(--red)',
+    interview_scheduled: 'var(--yellow)',
+    referred: 'var(--accent2)'
+  };
+  const outcomeLabels = {
+    no_response: 'No Response',
+    positive: 'Positive',
+    negative: 'Rejected',
+    interview_scheduled: 'Interview',
+    referred: 'Referred'
+  };
+
+  const outreachHtml = cachedOutreach.map(o => {
     const icon = channelIcons[o.channel] || '&#9993;&#65039;';
     const contactName = o.v2_contacts?.name || 'Unknown';
     const company = o.v2_contacts?.company || o.v2_jobs?.company || '';
     const outcome = o.outcome || 'no_response';
-    const outcomeLabels = {
-      no_response: 'No Response',
-      positive: 'Positive',
-      negative: 'Negative',
-      interview_scheduled: 'Interview',
-      referred: 'Referred'
-    };
-    const sentDate = o.sent_at ? formatDate(o.sent_at) : 'Unknown date';
+    const oColor = outcomeColors[outcome] || 'var(--dim)';
+    const oLabel = outcomeLabels[outcome] || outcome;
+    const sentDate = o.sent_at ? formatDate(o.sent_at) : 'Draft';
+    const isDraft = !o.sent_at;
+    const isResponded = o.response_received;
+    const filterClass = isDraft ? 'draft' : isResponded ? 'responded' : 'sent';
 
     return `
-      <div class="outreach-card">
+      <div class="outreach-card" data-filter="${filterClass}">
         <div class="outreach-channel ${o.channel}">${icon}</div>
-        <div class="outreach-body">
+        <div class="outreach-body" style="flex:1">
           <div class="outreach-name">${esc(contactName)}${company ? ` - ${esc(company)}` : ''}</div>
           <div class="outreach-detail">${esc(o.channel || '')} - ${sentDate}${o.subject_line ? ' - ' + esc(o.subject_line) : ''}</div>
-          ${o.message_text ? `<div style="font-size:12px;color:var(--dim);margin-top:4px;font-style:italic;max-width:500px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">"${esc(o.message_text)}"</div>` : ''}
+          ${o.message_text ? `<div style="font-size:12px;color:var(--dim);margin-top:4px;font-style:italic;max-width:500px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">"${esc(o.message_text.substring(0, 120))}"</div>` : ''}
         </div>
-        <span class="outcome-badge outcome-${outcome}">${outcomeLabels[outcome] || outcome}</span>
+        <span class="outcome-badge" style="color:${oColor};border-color:${oColor};background:${oColor}11">${oLabel}</span>
       </div>`;
   }).join('');
+
+  list.innerHTML = filterHtml + outreachHtml;
+}
+
+function filterOutreach(filter, btn) {
+  // Update active button
+  document.querySelectorAll('.outreach-filter').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+
+  // Show/hide cards
+  document.querySelectorAll('.outreach-card[data-filter]').forEach(card => {
+    if (filter === 'all') {
+      card.style.display = '';
+    } else {
+      card.style.display = card.dataset.filter === filter ? '' : 'none';
+    }
+  });
 }
 
 // ============================================
@@ -2481,42 +2614,77 @@ function renderFollowups() {
   const list = document.getElementById('followupsList');
   const today = new Date().toISOString().split('T')[0];
 
-  document.getElementById('followups-meta').textContent = `${cachedFollowups.length} pending follow-ups`;
+  // Group: overdue, due today, upcoming
+  const overdue = cachedFollowups.filter(f => f.due_date < today);
+  const dueToday = cachedFollowups.filter(f => f.due_date === today);
+  const upcoming = cachedFollowups.filter(f => f.due_date > today);
+
+  const overdueCount = overdue.length;
+  const todayCount = dueToday.length;
+  document.getElementById('followups-meta').textContent = `${cachedFollowups.length} pending${overdueCount > 0 ? ' · ' + overdueCount + ' overdue' : ''}`;
 
   if (cachedFollowups.length === 0) {
     list.innerHTML = '<div class="empty-state" style="padding:60px"><div class="empty-state-icon">&#128276;</div><div class="empty-state-title">No follow-ups pending</div><div class="empty-state-text">Follow-ups are automatically created when you log outreach. They will appear here when due.</div></div>';
     return;
   }
 
-  list.innerHTML = cachedFollowups.map(f => {
-    const isOverdue = f.due_date < today;
-    const isDueToday = f.due_date === today;
-    const statusClass = isOverdue ? 'overdue' : isDueToday ? 'due-today' : '';
-    const dotColor = isOverdue ? 'var(--red)' : isDueToday ? 'var(--yellow)' : 'var(--accent)';
-    const contactName = f.v2_contacts?.name || 'Unknown';
-    const company = f.v2_jobs?.company || f.v2_contacts?.company || '';
-    const dueLabel = isOverdue ? `Overdue (${formatDate(f.due_date)})` : isDueToday ? 'Due today' : `Due ${formatDate(f.due_date)}`;
+  const timerLabels = {
+    application: 'Application follow-up',
+    outreach_email: 'Email follow-up',
+    outreach_linkedin: 'LinkedIn follow-up',
+    linkedin_connection: 'Connection request',
+    interview_thankyou: 'Interview thank-you',
+    general_followup: 'General follow-up'
+  };
 
+  function renderGroup(title, items, borderColor, dotColor) {
+    if (items.length === 0) return '';
     return `
-      <div class="followup-card ${statusClass}">
-        <div class="followup-dot" style="background:${dotColor}"></div>
-        <div class="followup-body">
-          <div class="followup-title">${esc(contactName)}${company ? ` - ${esc(company)}` : ''}</div>
-          <div class="followup-sub">${esc(f.reason || 'Follow up')} - <span style="color:${isOverdue ? 'var(--red)' : isDueToday ? 'var(--yellow)' : 'var(--dim)'}">${dueLabel}</span></div>
-        </div>
-        <div class="followup-actions">
-          <button class="btn btn-success btn-sm" onclick="markFollowupDone('${f.id}')">Mark Done</button>
-          <div style="position:relative">
-            <button class="btn btn-ghost btn-sm snooze-trigger" onclick="toggleSnooze(event, '${f.id}')">Snooze</button>
-            <div class="snooze-dropdown" id="snooze-${f.id}">
-              <div class="snooze-option" onclick="snoozeFollowup('${f.id}', 1)">1 day</div>
-              <div class="snooze-option" onclick="snoozeFollowup('${f.id}', 3)">3 days</div>
-              <div class="snooze-option" onclick="snoozeFollowup('${f.id}', 7)">7 days</div>
-            </div>
-          </div>
-        </div>
+      <div style="margin-bottom:20px">
+        <div style="font-size:12px;font-weight:700;letter-spacing:1px;color:${borderColor};text-transform:uppercase;margin-bottom:10px;padding-left:4px">${title} (${items.length})</div>
+        ${items.map(f => {
+          const contactName = f.v2_contacts?.name || 'Unknown';
+          const company = f.v2_jobs?.company || f.v2_contacts?.company || '';
+          const timerLabel = timerLabels[f.timer_type] || 'Follow-up';
+          const daysOverdue = Math.floor((new Date().getTime() - new Date(f.due_date).getTime()) / (1000 * 60 * 60 * 24));
+          const dueLabel = f.due_date < today ? `${daysOverdue} day${daysOverdue !== 1 ? 's' : ''} overdue` : f.due_date === today ? 'Due today' : `Due ${formatDate(f.due_date)}`;
+          const daysSinceContact = f.days_since_last_contact != null ? `Last contact: ${f.days_since_last_contact} day${f.days_since_last_contact !== 1 ? 's' : ''} ago` : '';
+
+          return `
+            <div class="followup-card" style="border-left:3px solid ${borderColor}">
+              <div class="followup-dot" style="background:${dotColor}"></div>
+              <div class="followup-body" style="flex:1">
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                  <div class="followup-title">${esc(contactName)}</div>
+                  ${company ? `<span style="font-size:12px;color:var(--accent)">${esc(company)}</span>` : ''}
+                </div>
+                <div class="followup-sub">
+                  <span style="color:${dotColor};font-weight:600">${dueLabel}</span>
+                  · ${esc(timerLabel)}
+                  ${daysSinceContact ? ` · ${daysSinceContact}` : ''}
+                </div>
+                ${f.reason ? `<div style="font-size:11px;color:var(--dim);margin-top:2px">${esc(f.reason)}</div>` : ''}
+              </div>
+              <div class="followup-actions">
+                <button class="btn btn-success btn-sm" onclick="markFollowupDone('${f.id}')">Mark Done</button>
+                <div style="position:relative">
+                  <button class="btn btn-ghost btn-sm snooze-trigger" onclick="toggleSnooze(event, '${f.id}')">Snooze</button>
+                  <div class="snooze-dropdown" id="snooze-${f.id}">
+                    <div class="snooze-option" onclick="snoozeFollowup('${f.id}', 1)">1 day</div>
+                    <div class="snooze-option" onclick="snoozeFollowup('${f.id}', 3)">3 days</div>
+                    <div class="snooze-option" onclick="snoozeFollowup('${f.id}', 7)">7 days</div>
+                  </div>
+                </div>
+              </div>
+            </div>`;
+        }).join('')}
       </div>`;
-  }).join('');
+  }
+
+  list.innerHTML =
+    renderGroup('Overdue', overdue, 'var(--red)', 'var(--red)') +
+    renderGroup('Due Today', dueToday, 'var(--yellow)', 'var(--yellow)') +
+    renderGroup('Upcoming', upcoming, 'var(--cyan)', 'var(--cyan)');
 }
 
 function toggleSnooze(event, followupId) {
@@ -2638,6 +2806,42 @@ function selectAI(el) {
 }
 
 // ============================================
+// RENDER: AI ACTIVITY VIEW
+// ============================================
+
+async function loadAndRenderActivity() {
+  const container = document.getElementById('activityFeed');
+  if (!container) return;
+
+  try {
+    const activities = await api('/activity?limit=30');
+
+    if (!activities || activities.length === 0) {
+      container.innerHTML = '<div class="empty-state" style="padding:60px"><div class="empty-state-icon">&#129504;</div><div class="empty-state-title">No activity yet</div><div class="empty-state-text">When your AI takes actions via MCP, they will show up here.</div></div>';
+      return;
+    }
+
+    container.innerHTML = activities.map(a => {
+      const typeIcons = { outreach: '&#9993;&#65039;', followup: '&#128276;', job_update: '&#128188;' };
+      const typeColors = { outreach: 'rgba(99,102,241,.15)', followup: 'rgba(234,179,8,.15)', job_update: 'rgba(6,182,212,.15)' };
+      const icon = typeIcons[a.type] || '&#9889;';
+      const bg = typeColors[a.type] || 'rgba(255,255,255,.05)';
+
+      return `
+        <div class="feed-item">
+          <div class="feed-icon" style="background:${bg}">${icon}</div>
+          <div class="feed-body">
+            <div class="feed-agent" style="color:var(--dim)">${a.type.toUpperCase().replace('_', ' ')} - ${timeAgo(a.timestamp)}</div>
+            <div class="feed-text">${esc(a.description)}</div>
+          </div>
+        </div>`;
+    }).join('');
+  } catch (err) {
+    container.innerHTML = '<div class="empty-state" style="padding:40px"><div class="empty-state-text">Failed to load activity.</div></div>';
+  }
+}
+
+// ============================================
 // API KEYS MANAGEMENT
 // ============================================
 
@@ -2648,7 +2852,7 @@ async function createApiKey() {
   const name = nameInput.value.trim() || 'Core Line AI Key';
 
   try {
-    const res = await api('/keys', {
+    const res = await api('/auth/api-key', {
       method: 'POST',
       body: JSON.stringify({ name }),
     });
@@ -2676,7 +2880,7 @@ async function copyNewKey() {
 
 async function loadAndRenderApiKeys() {
   try {
-    const keys = await api('/keys');
+    const keys = await api('/auth/api-keys');
     const container = document.getElementById('apiKeysList');
 
     if (!keys || keys.length === 0) {
@@ -2692,9 +2896,39 @@ async function loadAndRenderApiKeys() {
           <div class="key-prefix">${esc(k.key_prefix)}...</div>
           <div class="key-meta">Created ${formatDate(k.created_at)}${k.last_used_at ? ' · Last used ' + timeAgo(k.last_used_at) : ' · Never used'}</div>
         </div>
+        <button class="btn btn-ghost btn-sm" style="color:var(--red);border-color:rgba(239,68,68,.3)" onclick="revokeApiKey('${k.id}', '${esc(k.name)}')">Revoke</button>
       </div>`).join('');
+
+    // Add MCP config snippet below keys
+    container.innerHTML += `
+      <div style="margin-top:24px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:24px">
+        <div style="font-weight:700;font-size:14px;margin-bottom:4px">Claude Desktop MCP Config</div>
+        <div style="font-size:12px;color:var(--dim);margin-bottom:12px">Add this to your claude_desktop_config.json:</div>
+        <pre style="background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:8px;padding:16px;font-size:11px;color:var(--cyan);overflow-x:auto;line-height:1.6">{
+  "mcpServers": {
+    "coreline": {
+      "command": "npx",
+      "args": ["tsx", "${window.location.hostname === 'localhost' ? '/home/micah/Github/coreline-v2' : '.'}/src/mcp/index.ts"],
+      "env": {
+        "CORELINE_API_KEY": "YOUR_API_KEY_HERE"
+      }
+    }
+  }
+}</pre>
+      </div>`;
   } catch (err) {
     // Silent on polling
+  }
+}
+
+async function revokeApiKey(keyId, keyName) {
+  if (!confirm('Revoke API key "' + keyName + '"? Any AI using this key will lose access.')) return;
+  try {
+    await api('/auth/api-keys/' + keyId, { method: 'DELETE' });
+    showToast('API key revoked', 'success');
+    await loadAndRenderApiKeys();
+  } catch (err) {
+    showToast('Failed to revoke key: ' + err.message, 'error');
   }
 }
 

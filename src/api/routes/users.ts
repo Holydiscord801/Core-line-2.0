@@ -27,68 +27,17 @@ router.patch('/autopilot', async (req: Request, res: Response) => {
   }
 });
 
-// GET /api/users/profile - Get current user profile
-router.get('/profile', async (req: Request, res: Response) => {
+// GET /api/users/me - Alias for /profile
+router.get('/me', async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
-
     const { data, error } = await supabase
       .from('v2_users')
-      .select('id, email, full_name, resume_text, preferences, onboarding_complete, autopilot_enabled, review_window_hours, created_at, updated_at')
+      .select('*')
       .eq('id', userId)
       .single();
-
     if (error) throw error;
     res.json(data);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// PATCH /api/users/profile - Update user profile
-router.patch('/profile', async (req: Request, res: Response) => {
-  try {
-    const userId = req.userId!;
-    const { full_name, resume_text, preferences } = req.body;
-
-    const updates: any = {};
-    if (full_name !== undefined) updates.full_name = full_name;
-    if (resume_text !== undefined) updates.resume_text = resume_text;
-    if (preferences !== undefined) updates.preferences = preferences;
-
-    if (Object.keys(updates).length === 0) {
-      res.status(400).json({ error: 'No fields to update' });
-      return;
-    }
-
-    const { data, error } = await supabase
-      .from('v2_users')
-      .update(updates)
-      .eq('id', userId)
-      .select()
-      .single();
-
-    if (error) throw error;
-    res.json(data);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// POST /api/users/onboarding-complete - Mark onboarding as complete
-router.post('/onboarding-complete', async (req: Request, res: Response) => {
-  try {
-    const userId = req.userId!;
-
-    const { data, error } = await supabase
-      .from('v2_users')
-      .update({ onboarding_complete: true })
-      .eq('id', userId)
-      .select()
-      .single();
-
-    if (error) throw error;
-    res.json({ success: true, profile: data });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

@@ -43,4 +43,36 @@ router.post('/api-key', async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/auth/api-keys - List user's API keys (no raw keys)
+router.get('/api-keys', async (req: Request, res: Response) => {
+  try {
+    const { data, error } = await supabase
+      .from('v2_api_keys')
+      .select('id, name, key_prefix, last_used_at, created_at')
+      .eq('user_id', req.userId!)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    res.json(data || []);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/auth/api-keys/:id - Revoke an API key
+router.delete('/api-keys/:id', async (req: Request, res: Response) => {
+  try {
+    const { error } = await supabase
+      .from('v2_api_keys')
+      .delete()
+      .eq('id', req.params.id)
+      .eq('user_id', req.userId!);
+
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;

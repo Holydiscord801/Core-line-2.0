@@ -11,6 +11,7 @@ import authRouter from './routes/auth.js';
 import pipelineRouter from './routes/pipeline.js';
 import keysRouter from './routes/keys.js';
 import usersRouter from './routes/users.js';
+import activityRouter from './routes/activity.js';
 
 export function createApp() {
   const app = express();
@@ -30,13 +31,13 @@ export function createApp() {
   app.use('/api/contacts', contactsRouter);
   app.use('/api/outreach', outreachRouter);
   app.use('/api/battle-plan', battleplanRouter);
-  app.use('/api/battle-plans', battleplanRouter);
   app.use('/api/followups', followupsRouter);
   app.use('/api/summary', summaryRouter);
   app.use('/api/auth', authRouter);
   app.use('/api/pipeline', pipelineRouter);
   app.use('/api/keys', keysRouter);
   app.use('/api/users', usersRouter);
+  app.use('/api/activity', activityRouter);
 
   // 404 handler
   app.use((_req, res) => {
