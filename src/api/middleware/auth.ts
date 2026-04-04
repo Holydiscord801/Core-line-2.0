@@ -67,14 +67,36 @@ export async function authMiddleware(
   }
 
   // Look up v2_users row by auth_user_id
-  const { data: v2User, error: userError } = await supabase
+  let { data: v2User, error: userError } = await supabase
     .from('v2_users')
     .select('id')
     .eq('auth_user_id', user.id)
     .single();
 
-  if (userError || !v2User) {
-    res.status(401).json({ error: 'User profile not found. Create a profile first.' });
+  // Auto-provision v2_users row for new sign-ups
+  if ((userError && userError.code === 'PGRST116') || !v2User) {
+    const { data: newUser, error: createError } = await supabase
+      .from('v2_users')
+      .insert({
+        auth_user_id: user.id,
+        email: user.email || '',
+        full_name: user.user_metadata?.full_name || null,
+        preferences: {},
+        onboarding_complete: false,
+        autopilot_enabled: false,
+        review_window_hours: 4,
+      })
+      .select('id')
+      .single();
+
+    if (createError || !newUser) {
+      res.status(500).json({ error: 'Failed to create user profile' });
+      return;
+    }
+
+    v2User = newUser;
+  } else if (userError) {
+    res.status(500).json({ error: 'Database error: ' + userError.message });
     return;
   }
 

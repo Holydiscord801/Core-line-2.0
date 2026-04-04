@@ -27,6 +27,7 @@ export interface V2User {
   updated_at: string;
   autopilot_enabled: boolean;
   review_window_hours: number;
+  onboarding_complete: boolean;
 }
 
 export type JobStatus = 'new' | 'researching' | 'applied' | 'interviewing' | 'offer' | 'closed' | 'rejected';

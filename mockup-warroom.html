@@ -174,6 +174,46 @@ body::before{content:'';position:fixed;top:-200px;left:50%;transform:translateX(
 .api-key-card .key-prefix{font-family:'Courier New',monospace;font-size:12px;color:var(--accent2)}
 .api-key-card .key-meta{font-size:11px;color:var(--dim)}
 
+/* Onboarding wizard */
+.onboarding-overlay{position:fixed;inset:0;background:var(--bg);z-index:900;display:flex;align-items:center;justify-content:center;overflow-y:auto;padding:20px}
+.onboarding-overlay.hidden{display:none}
+.onboarding-container{max-width:640px;width:100%;margin:auto}
+.onboarding-progress{display:flex;gap:8px;margin-bottom:32px;justify-content:center}
+.onboarding-progress .step-dot{width:40px;height:4px;border-radius:2px;background:rgba(255,255,255,.1);transition:background .3s}
+.onboarding-progress .step-dot.active{background:var(--accent)}
+.onboarding-progress .step-dot.done{background:var(--green)}
+.onboarding-card{background:rgba(13,13,23,.8);backdrop-filter:blur(20px);border:1px solid rgba(99,102,241,.2);border-radius:20px;padding:40px;position:relative;animation:fadeUp .3s ease}
+@keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+.onboarding-step-num{font-size:11px;font-weight:700;letter-spacing:2px;color:var(--accent);text-transform:uppercase;margin-bottom:12px}
+.onboarding-title{font-size:24px;font-weight:800;margin-bottom:8px}
+.onboarding-sub{font-size:14px;color:var(--dim);line-height:1.6;margin-bottom:28px}
+.onboarding-field{margin-bottom:20px}
+.onboarding-label{font-size:12px;font-weight:600;letter-spacing:.5px;color:var(--dim);margin-bottom:8px;display:block}
+.onboarding-input{width:100%;background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:10px;padding:12px 16px;color:var(--text);font-size:14px;font-family:inherit;outline:none;transition:border-color .2s}
+.onboarding-input:focus{border-color:var(--accent)}
+.onboarding-textarea{width:100%;background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:10px;padding:12px 16px;color:var(--text);font-size:13px;font-family:inherit;outline:none;resize:vertical;min-height:140px;line-height:1.6;transition:border-color .2s}
+.onboarding-textarea:focus{border-color:var(--accent)}
+.onboarding-textarea::placeholder{color:var(--dim)}
+.onboarding-chips{display:flex;flex-wrap:wrap;gap:8px}
+.onboarding-chip{padding:8px 16px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:rgba(255,255,255,.03);color:var(--dim);transition:all .2s;user-select:none}
+.onboarding-chip:hover{border-color:rgba(99,102,241,.4);color:var(--text)}
+.onboarding-chip.selected{background:rgba(99,102,241,.15);border-color:var(--accent);color:var(--accent)}
+.onboarding-remote-options{display:flex;gap:8px;margin-top:8px}
+.onboarding-remote-option{flex:1;padding:12px;border-radius:10px;text-align:center;font-size:13px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:rgba(255,255,255,.03);color:var(--dim);transition:all .2s}
+.onboarding-remote-option:hover{border-color:rgba(99,102,241,.4)}
+.onboarding-remote-option.selected{background:rgba(99,102,241,.15);border-color:var(--accent);color:var(--accent)}
+.onboarding-nav{display:flex;justify-content:space-between;margin-top:28px}
+.onboarding-btn{padding:12px 28px;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;border:none;transition:all .2s;letter-spacing:.3px}
+.onboarding-btn.primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff}
+.onboarding-btn.primary:hover{opacity:.9}
+.onboarding-btn.ghost{background:transparent;color:var(--dim);border:1px solid var(--border)}
+.onboarding-btn.ghost:hover{color:var(--text);border-color:rgba(255,255,255,.2)}
+.onboarding-btn:disabled{opacity:.4;cursor:not-allowed}
+.onboarding-summary{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px}
+.onboarding-summary-card{background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:12px;padding:16px}
+.onboarding-summary-label{font-size:11px;font-weight:700;letter-spacing:1px;color:var(--dim);text-transform:uppercase;margin-bottom:6px}
+.onboarding-summary-value{font-size:14px;font-weight:600;color:var(--text)}
+
 /* Modal overlays */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(8px);z-index:1000;display:flex;align-items:center;justify-content:center}
 .modal-overlay.hidden{display:none}
@@ -947,6 +987,160 @@ body::before{content:'';position:fixed;top:-200px;left:50%;transform:translateX(
 
 </div><!-- end app -->
 
+<!-- ONBOARDING WIZARD -->
+<div class="onboarding-overlay hidden" id="onboardingOverlay">
+  <div class="onboarding-container">
+    <div style="text-align:center;margin-bottom:8px">
+      <div class="logo" style="font-size:22px;display:inline-block">CORE<span style="color:var(--accent)">LINE</span></div>
+    </div>
+    <div class="onboarding-progress" id="onboardingProgress">
+      <div class="step-dot active"></div>
+      <div class="step-dot"></div>
+      <div class="step-dot"></div>
+      <div class="step-dot"></div>
+      <div class="step-dot"></div>
+    </div>
+
+    <!-- Step 1: Welcome -->
+    <div class="onboarding-card" id="onboardStep1">
+      <div class="onboarding-step-num">Step 1 of 5</div>
+      <div class="onboarding-title">Welcome to Core Line</div>
+      <div class="onboarding-sub">Your job search command center. Let's set up your profile so your AI knows what you're looking for.</div>
+      <div class="onboarding-field">
+        <label class="onboarding-label">Full Name</label>
+        <input type="text" class="onboarding-input" id="obName" placeholder="e.g. Micah Baird" autocomplete="name">
+      </div>
+      <div class="onboarding-nav">
+        <div></div>
+        <button class="onboarding-btn primary" onclick="onboardNext(1)">Get Started</button>
+      </div>
+    </div>
+
+    <!-- Step 2: Resume -->
+    <div class="onboarding-card hidden" id="onboardStep2">
+      <div class="onboarding-step-num">Step 2 of 5</div>
+      <div class="onboarding-title">Your Resume</div>
+      <div class="onboarding-sub">Paste your resume text below. Your AI uses this to match you with jobs and personalize outreach. File upload coming soon.</div>
+      <div class="onboarding-field">
+        <label class="onboarding-label">Resume Text</label>
+        <textarea class="onboarding-textarea" id="obResume" placeholder="Paste your resume here. Include your title, experience, key skills, and achievements. The more detail, the better your AI can match and write outreach for you." rows="8"></textarea>
+      </div>
+      <div style="font-size:11px;color:var(--dim);margin-top:-12px;margin-bottom:16px">Tip: Include your current title, years of experience, industries, and key accomplishments.</div>
+      <div class="onboarding-nav">
+        <button class="onboarding-btn ghost" onclick="onboardBack(2)">Back</button>
+        <button class="onboarding-btn primary" onclick="onboardNext(2)">Continue</button>
+      </div>
+    </div>
+
+    <!-- Step 3: Preferences -->
+    <div class="onboarding-card hidden" id="onboardStep3">
+      <div class="onboarding-step-num">Step 3 of 5</div>
+      <div class="onboarding-title">Your Preferences</div>
+      <div class="onboarding-sub">Tell your AI what kind of roles you're targeting. It uses these to score and filter opportunities.</div>
+
+      <div class="onboarding-field">
+        <label class="onboarding-label">Target Roles (select all that apply)</label>
+        <div class="onboarding-chips" id="obRoles">
+          <div class="onboarding-chip" data-value="VP Engineering" onclick="toggleChip(this)">VP Engineering</div>
+          <div class="onboarding-chip" data-value="CTO" onclick="toggleChip(this)">CTO</div>
+          <div class="onboarding-chip" data-value="SVP Engineering" onclick="toggleChip(this)">SVP Engineering</div>
+          <div class="onboarding-chip" data-value="Director Engineering" onclick="toggleChip(this)">Director Engineering</div>
+          <div class="onboarding-chip" data-value="VP Operations" onclick="toggleChip(this)">VP Operations</div>
+          <div class="onboarding-chip" data-value="VP Technology" onclick="toggleChip(this)">VP Technology</div>
+          <div class="onboarding-chip" data-value="Chief Digital Officer" onclick="toggleChip(this)">Chief Digital Officer</div>
+          <div class="onboarding-chip" data-value="Head of Engineering" onclick="toggleChip(this)">Head of Engineering</div>
+        </div>
+      </div>
+
+      <div class="onboarding-field">
+        <label class="onboarding-label">Minimum Base Salary (USD)</label>
+        <input type="number" class="onboarding-input" id="obSalary" placeholder="e.g. 180000" step="5000">
+      </div>
+
+      <div class="onboarding-field">
+        <label class="onboarding-label">Preferred Locations</label>
+        <div style="display:flex;gap:8px">
+          <input type="text" class="onboarding-input" id="obLocationInput" placeholder="Type a city and press Enter" style="flex:1">
+          <button class="onboarding-btn ghost" style="padding:8px 16px;font-size:12px" onclick="addLocation()">Add</button>
+        </div>
+        <div class="onboarding-chips" id="obLocations" style="margin-top:10px"></div>
+      </div>
+
+      <div class="onboarding-field">
+        <label class="onboarding-label">Remote Preference</label>
+        <div class="onboarding-remote-options">
+          <div class="onboarding-remote-option selected" data-value="remote_ok" onclick="selectRemote(this)">Remote OK</div>
+          <div class="onboarding-remote-option" data-value="hybrid" onclick="selectRemote(this)">Hybrid</div>
+          <div class="onboarding-remote-option" data-value="onsite" onclick="selectRemote(this)">On-site Only</div>
+        </div>
+      </div>
+
+      <div class="onboarding-field">
+        <label class="onboarding-label">Industries (select all that apply)</label>
+        <div class="onboarding-chips" id="obIndustries">
+          <div class="onboarding-chip" data-value="SaaS" onclick="toggleChip(this)">SaaS</div>
+          <div class="onboarding-chip" data-value="Fintech" onclick="toggleChip(this)">Fintech</div>
+          <div class="onboarding-chip" data-value="Healthtech" onclick="toggleChip(this)">Healthtech</div>
+          <div class="onboarding-chip" data-value="E-commerce" onclick="toggleChip(this)">E-commerce</div>
+          <div class="onboarding-chip" data-value="Enterprise" onclick="toggleChip(this)">Enterprise</div>
+          <div class="onboarding-chip" data-value="AI/ML" onclick="toggleChip(this)">AI/ML</div>
+          <div class="onboarding-chip" data-value="Cybersecurity" onclick="toggleChip(this)">Cybersecurity</div>
+          <div class="onboarding-chip" data-value="Cloud Infrastructure" onclick="toggleChip(this)">Cloud Infrastructure</div>
+        </div>
+      </div>
+
+      <div class="onboarding-nav">
+        <button class="onboarding-btn ghost" onclick="onboardBack(3)">Back</button>
+        <button class="onboarding-btn primary" onclick="onboardNext(3)">Continue</button>
+      </div>
+    </div>
+
+    <!-- Step 4: Connect Your AI -->
+    <div class="onboarding-card hidden" id="onboardStep4">
+      <div class="onboarding-step-num">Step 4 of 5</div>
+      <div class="onboarding-title">Connect Your AI</div>
+      <div class="onboarding-sub">Core Line is infrastructure. You bring the AI. Generate an API key, then connect Claude, ChatGPT, Gemini, or any MCP-compatible AI.</div>
+
+      <div style="margin-bottom:20px">
+        <div class="onboarding-label">Your API Key</div>
+        <div style="background:rgba(99,102,241,.06);border:1px solid rgba(99,102,241,.2);border-radius:12px;padding:14px 20px;font-family:'Courier New',monospace;font-size:13px;display:flex;align-items:center;justify-content:space-between;gap:12px">
+          <span id="obApiKeyDisplay" style="color:var(--dim)">Click Generate to create your key</span>
+          <button class="onboarding-btn primary" style="padding:8px 16px;font-size:12px" id="obGenKeyBtn" onclick="obGenerateKey()">Generate Key</button>
+        </div>
+        <div id="obKeyWarning" class="hidden" style="font-size:11px;color:var(--yellow);margin-top:8px;font-weight:600">Save this key now. It will not be shown again.</div>
+      </div>
+
+      <div class="onboarding-label" style="margin-bottom:10px">Quick Setup (Claude Desktop)</div>
+      <div style="background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:10px;padding:16px;font-size:13px;color:var(--dim);line-height:1.8;margin-bottom:20px">
+        1. Open <strong style="color:var(--text)">Claude Desktop</strong> > Settings > Integrations > Add MCP Server<br>
+        2. Name it <strong style="color:var(--text)">"Core Line"</strong> and paste your API key<br>
+        3. Start a new chat and say: <strong style="color:var(--text)">"Connect to my Core Line battle plan"</strong>
+      </div>
+
+      <div style="font-size:11px;color:var(--dim)">You can skip this step and connect your AI later from the API Keys page.</div>
+
+      <div class="onboarding-nav">
+        <button class="onboarding-btn ghost" onclick="onboardBack(4)">Back</button>
+        <button class="onboarding-btn primary" onclick="onboardNext(4)">Continue</button>
+      </div>
+    </div>
+
+    <!-- Step 5: Ready -->
+    <div class="onboarding-card hidden" id="onboardStep5">
+      <div class="onboarding-step-num">Step 5 of 5</div>
+      <div class="onboarding-title">You're Ready</div>
+      <div class="onboarding-sub">Here's what we set up. You can change any of this later in your profile settings.</div>
+
+      <div class="onboarding-summary" id="obSummary"></div>
+
+      <div style="text-align:center;margin-top:8px">
+        <button class="onboarding-btn primary" style="padding:16px 48px;font-size:16px;letter-spacing:.5px" onclick="completeOnboarding()">Launch War Room</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
 <script>
 // ============================================
 // SUPABASE + API SETUP
@@ -1104,9 +1298,60 @@ function onAuthStateChange(session) {
     document.getElementById('userAvatar').textContent = initial;
     document.getElementById('userEmail').textContent = email;
     hideAuthModal();
-    loadAllData();
+    // Check onboarding status
+    checkOnboardingStatus();
   } else {
     showAuthModal();
+  }
+}
+
+async function checkOnboardingStatus() {
+  try {
+    const profile = await api('/users/profile');
+    if (!profile.onboarding_complete) {
+      showOnboarding();
+      // Pre-fill name if available
+      if (profile.full_name) {
+        document.getElementById('obName').value = profile.full_name;
+      }
+      // Pre-fill resume if available
+      if (profile.resume_text) {
+        document.getElementById('obResume').value = profile.resume_text;
+      }
+      // Pre-fill preferences if available
+      if (profile.preferences) {
+        const prefs = profile.preferences;
+        if (prefs.role_types) {
+          prefs.role_types.forEach(role => {
+            const chip = document.querySelector('#obRoles .onboarding-chip[data-value="' + role + '"]');
+            if (chip) chip.classList.add('selected');
+          });
+        }
+        if (prefs.salary_floor) {
+          document.getElementById('obSalary').value = prefs.salary_floor;
+        }
+        if (prefs.locations) {
+          obLocations = prefs.locations;
+          renderLocationChips();
+        }
+        if (prefs.industries) {
+          prefs.industries.forEach(ind => {
+            const chip = document.querySelector('#obIndustries .onboarding-chip[data-value="' + ind + '"]');
+            if (chip) chip.classList.add('selected');
+          });
+        }
+        if (prefs.remote_ok !== undefined) {
+          const val = prefs.remote_ok ? 'remote_ok' : 'onsite';
+          const option = document.querySelector('.onboarding-remote-option[data-value="' + val + '"]');
+          if (option) selectRemote(option);
+        }
+      }
+    } else {
+      loadAllData();
+    }
+  } catch (err) {
+    // If profile fetch fails, show onboarding anyway
+    showOnboarding();
   }
 }
 
@@ -2114,6 +2359,264 @@ async function saveReviewWindow() {
     await loadAutopilotSettings();
   } catch (err) {
     showToast('Failed to save: ' + err.message, 'error');
+  }
+}
+
+// ============================================
+// ONBOARDING WIZARD
+// ============================================
+
+let obCurrentStep = 1;
+let obApiKey = null;
+let obLocations = [];
+
+function showOnboarding() {
+  document.getElementById('onboardingOverlay').classList.remove('hidden');
+  // Hide the main app
+  document.querySelector('.app').style.display = 'none';
+  obCurrentStep = 1;
+  updateOnboardingProgress();
+}
+
+function hideOnboarding() {
+  document.getElementById('onboardingOverlay').classList.add('hidden');
+  document.querySelector('.app').style.display = '';
+}
+
+function updateOnboardingProgress() {
+  const dots = document.querySelectorAll('#onboardingProgress .step-dot');
+  dots.forEach((dot, i) => {
+    dot.className = 'step-dot';
+    if (i + 1 < obCurrentStep) dot.classList.add('done');
+    else if (i + 1 === obCurrentStep) dot.classList.add('active');
+  });
+}
+
+function showOnboardStep(step) {
+  for (let i = 1; i <= 5; i++) {
+    const el = document.getElementById('onboardStep' + i);
+    if (el) {
+      if (i === step) {
+        el.classList.remove('hidden');
+        el.style.display = '';
+      } else {
+        el.classList.add('hidden');
+        el.style.display = 'none';
+      }
+    }
+  }
+}
+
+async function onboardNext(fromStep) {
+  // Validate current step
+  if (fromStep === 1) {
+    const name = document.getElementById('obName').value.trim();
+    if (!name) {
+      showToast('Please enter your name', 'error');
+      return;
+    }
+  }
+
+  if (fromStep === 3) {
+    // Save profile data when leaving preferences step
+    await saveOnboardingProfile();
+  }
+
+  if (fromStep === 5) {
+    await completeOnboarding();
+    return;
+  }
+
+  // Prepare step 5 summary
+  if (fromStep === 4) {
+    renderOnboardingSummary();
+  }
+
+  obCurrentStep = fromStep + 1;
+  showOnboardStep(obCurrentStep);
+  updateOnboardingProgress();
+}
+
+function onboardBack(fromStep) {
+  obCurrentStep = fromStep - 1;
+  showOnboardStep(obCurrentStep);
+  updateOnboardingProgress();
+}
+
+function toggleChip(el) {
+  el.classList.toggle('selected');
+}
+
+function getSelectedChips(containerId) {
+  const chips = document.querySelectorAll('#' + containerId + ' .onboarding-chip.selected');
+  return Array.from(chips).map(c => c.dataset.value);
+}
+
+function selectRemote(el) {
+  document.querySelectorAll('.onboarding-remote-option').forEach(o => o.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+function getSelectedRemote() {
+  const selected = document.querySelector('.onboarding-remote-option.selected');
+  return selected ? selected.dataset.value : 'remote_ok';
+}
+
+function addLocation() {
+  const input = document.getElementById('obLocationInput');
+  const val = input.value.trim();
+  if (!val) return;
+
+  if (!obLocations.includes(val)) {
+    obLocations.push(val);
+    renderLocationChips();
+  }
+  input.value = '';
+  input.focus();
+}
+
+// Handle Enter key in location input
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && document.activeElement?.id === 'obLocationInput') {
+    e.preventDefault();
+    addLocation();
+  }
+});
+
+function removeLocation(val) {
+  obLocations = obLocations.filter(l => l !== val);
+  renderLocationChips();
+}
+
+function renderLocationChips() {
+  const container = document.getElementById('obLocations');
+  container.innerHTML = obLocations.map(loc => `
+    <div class="onboarding-chip selected" onclick="removeLocation('${esc(loc)}')" style="cursor:pointer">
+      ${esc(loc)} <span style="margin-left:6px;opacity:.6">x</span>
+    </div>`).join('');
+}
+
+async function saveOnboardingProfile() {
+  const name = document.getElementById('obName').value.trim();
+  const resume = document.getElementById('obResume').value.trim();
+  const roles = getSelectedChips('obRoles');
+  const salary = parseInt(document.getElementById('obSalary').value) || 0;
+  const remote = getSelectedRemote();
+  const industries = getSelectedChips('obIndustries');
+
+  const preferences = {
+    role_types: roles,
+    salary_floor: salary,
+    locations: obLocations,
+    remote_ok: remote === 'remote_ok' || remote === 'hybrid',
+    industries: industries,
+  };
+
+  try {
+    await api('/users/profile', {
+      method: 'PATCH',
+      body: JSON.stringify({
+        full_name: name,
+        resume_text: resume || null,
+        preferences,
+      }),
+    });
+  } catch (err) {
+    showToast('Failed to save profile: ' + err.message, 'error');
+  }
+}
+
+async function obGenerateKey() {
+  const btn = document.getElementById('obGenKeyBtn');
+  const display = document.getElementById('obApiKeyDisplay');
+  const warning = document.getElementById('obKeyWarning');
+
+  if (obApiKey) {
+    await navigator.clipboard.writeText(obApiKey);
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy Key', 2000);
+    return;
+  }
+
+  btn.textContent = 'Generating...';
+  btn.disabled = true;
+
+  try {
+    const res = await api('/auth/api-key', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Core Line AI - Setup' }),
+    });
+
+    obApiKey = res.api_key;
+    display.textContent = obApiKey;
+    display.style.color = 'var(--accent2)';
+    warning.classList.remove('hidden');
+
+    await navigator.clipboard.writeText(obApiKey);
+    btn.textContent = 'Copy Key';
+    btn.disabled = false;
+    showToast('API key generated and copied', 'success');
+  } catch (err) {
+    btn.textContent = 'Generate Key';
+    btn.disabled = false;
+    showToast('Failed to generate key: ' + err.message, 'error');
+  }
+}
+
+function renderOnboardingSummary() {
+  const name = document.getElementById('obName').value.trim() || 'Not set';
+  const resume = document.getElementById('obResume').value.trim();
+  const roles = getSelectedChips('obRoles');
+  const salary = document.getElementById('obSalary').value;
+  const industries = getSelectedChips('obIndustries');
+  const remote = getSelectedRemote();
+  const remoteLabel = remote === 'remote_ok' ? 'Remote OK' : remote === 'hybrid' ? 'Hybrid' : 'On-site Only';
+
+  const container = document.getElementById('obSummary');
+  container.innerHTML = `
+    <div class="onboarding-summary-card">
+      <div class="onboarding-summary-label">Name</div>
+      <div class="onboarding-summary-value">${esc(name)}</div>
+    </div>
+    <div class="onboarding-summary-card">
+      <div class="onboarding-summary-label">Resume</div>
+      <div class="onboarding-summary-value">${resume ? resume.substring(0, 80) + '...' : 'Not provided'}</div>
+    </div>
+    <div class="onboarding-summary-card">
+      <div class="onboarding-summary-label">Target Roles</div>
+      <div class="onboarding-summary-value">${roles.length > 0 ? roles.join(', ') : 'None selected'}</div>
+    </div>
+    <div class="onboarding-summary-card">
+      <div class="onboarding-summary-label">Salary Floor</div>
+      <div class="onboarding-summary-value">${salary ? '$' + parseInt(salary).toLocaleString() : 'Not set'}</div>
+    </div>
+    <div class="onboarding-summary-card">
+      <div class="onboarding-summary-label">Locations</div>
+      <div class="onboarding-summary-value">${obLocations.length > 0 ? obLocations.join(', ') : 'Anywhere'}</div>
+    </div>
+    <div class="onboarding-summary-card">
+      <div class="onboarding-summary-label">Remote / Industries</div>
+      <div class="onboarding-summary-value">${remoteLabel}${industries.length > 0 ? ' - ' + industries.join(', ') : ''}</div>
+    </div>
+    <div class="onboarding-summary-card" style="grid-column:1/-1">
+      <div class="onboarding-summary-label">AI Connected</div>
+      <div class="onboarding-summary-value">${obApiKey ? 'Yes - API key generated' : 'Not yet - you can do this later'}</div>
+    </div>`;
+}
+
+async function completeOnboarding() {
+  try {
+    // Save profile one final time
+    await saveOnboardingProfile();
+
+    // Mark onboarding complete
+    await api('/users/onboarding-complete', { method: 'POST' });
+
+    hideOnboarding();
+    showToast('Welcome to Core Line! Your war room is ready.', 'success');
+    loadAllData();
+  } catch (err) {
+    showToast('Failed to complete onboarding: ' + err.message, 'error');
   }
 }
 
