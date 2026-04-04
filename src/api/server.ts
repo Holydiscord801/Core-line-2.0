@@ -30,6 +30,7 @@ export function createApp() {
   app.use('/api/contacts', contactsRouter);
   app.use('/api/outreach', outreachRouter);
   app.use('/api/battle-plan', battleplanRouter);
+  app.use('/api/battle-plans', battleplanRouter);
   app.use('/api/followups', followupsRouter);
   app.use('/api/summary', summaryRouter);
   app.use('/api/auth', authRouter);

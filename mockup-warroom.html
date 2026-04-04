@@ -638,13 +638,15 @@ body::before{content:'';position:fixed;top:-200px;left:50%;transform:translateX(
           <div class="section-meta" id="battleplan-meta" style="margin-top:4px">Loading...</div>
         </div>
         <div style="display:flex;gap:8px">
-          <div class="ai-status" id="bpAiStatus"><div class="ai-dot"></div> AI ready</div>
-          <button class="btn btn-primary" onclick="openModal('connectModal')">Ask AI to update plan</button>
+          <button class="btn btn-primary" onclick="generateBattlePlan()">Generate Now</button>
         </div>
       </div>
 
-      <!-- AI Briefing -->
+      <!-- Morning Brief -->
       <div id="battleplanBriefing"></div>
+
+      <!-- Battle Plan Stats -->
+      <div class="stats-row" id="battleplanStats" style="margin-bottom:24px"></div>
 
       <!-- Action Queue -->
       <div class="section-header"><div class="section-title">&#9889; Action Queue</div><div class="section-meta" id="actionQueueMeta">Loading...</div></div>
@@ -760,12 +762,13 @@ body::before{content:'';position:fixed;top:-200px;left:50%;transform:translateX(
               <th>Role</th>
               <th>Stage</th>
               <th>Comp</th>
+              <th>Match</th>
               <th>Last Touch</th>
-              <th>Heat</th>
+              <th>Resume</th>
             </tr>
           </thead>
           <tbody id="pipelineTableBody">
-            <tr><td colspan="6" style="text-align:center;color:var(--dim);padding:40px">Loading targets...</td></tr>
+            <tr><td colspan="7" style="text-align:center;color:var(--dim);padding:40px">Loading targets...</td></tr>
           </tbody>
         </table>
       </div>
@@ -1551,7 +1554,12 @@ function renderBattleGrid() {
   const grid = document.getElementById('battleGrid');
   const activeJobs = cachedJobs
     .filter(j => j.status !== 'closed' && j.status !== 'rejected')
-    .sort((a, b) => getStatusProgress(b.status) - getStatusProgress(a.status))
+    .sort((a, b) => {
+      // Sort by status progress first, then by match score
+      const statusDiff = getStatusProgress(b.status) - getStatusProgress(a.status);
+      if (statusDiff !== 0) return statusDiff;
+      return (b.match_score || b.fit_score || 0) - (a.match_score || a.fit_score || 0);
+    })
     .slice(0, 6);
 
   if (activeJobs.length === 0) {
@@ -1563,17 +1571,47 @@ function renderBattleGrid() {
     const hot = isHotJob(job);
     const salary = formatSalary(job);
     const expanded = expandedCardId === job.id;
+    const score = job.match_score || job.fit_score || 0;
+    const scoreColor = score >= 80 ? 'var(--green)' : score >= 60 ? 'var(--yellow)' : 'var(--dim)';
+    const scoreBg = score >= 80 ? 'rgba(34,197,94,.12)' : score >= 60 ? 'rgba(234,179,8,.1)' : 'rgba(255,255,255,.04)';
+    const resumeVariant = job.resume_variant || job.resume_version || null;
+    const postingDead = job.posting_status === 'dead';
 
     let html = `<div class="target-card ${hot ? 'hot' : ''} ${expanded ? 'expanded' : ''}" onclick="${expanded ? '' : `expandCard('${job.id}')`}" data-job-id="${job.id}">`;
-    if (hot) html += `<span class="hot-tag">HOT</span>`;
+
+    // Top-right badges: HOT tag or posting dead warning
+    if (postingDead) {
+      html += `<span class="hot-tag" style="color:var(--red);-webkit-text-fill-color:var(--red)">DEAD</span>`;
+    } else if (hot) {
+      html += `<span class="hot-tag">HOT</span>`;
+    }
+
     html += `<div class="target-company">${esc(job.company)}</div>`;
     html += `<div class="target-role">${esc(job.title)}</div>`;
     html += `<div class="target-meta">`;
     html += `<span class="tag stage-${job.status}">${formatStatus(job.status)}</span>`;
+
+    // Match score badge
+    if (score > 0) {
+      html += `<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;color:${scoreColor};background:${scoreBg};border:1px solid ${scoreColor}30">${score}% match</span>`;
+    }
+
     if (salary) html += `<span class="tag salary">${salary}</span>`;
     if (job.location) html += `<span class="tag location">${esc(job.location)}</span>`;
     if (job.remote) html += `<span class="tag location">Remote</span>`;
+
+    // Resume variant tag
+    if (resumeVariant) {
+      html += `<span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:4px;color:var(--accent2);background:rgba(139,92,246,.1);border:1px solid rgba(139,92,246,.2)">${esc(resumeVariant)}</span>`;
+    }
+
     html += `</div>`;
+
+    // Outreach draft quick-view button (below tags, above progress bar)
+    if (job.outreach_draft && !expanded) {
+      html += `<div style="margin-top:10px"><button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();showDraftByKey('${cacheDraft(job.outreach_draft)}')">View Draft</button></div>`;
+    }
+
     html += `<div class="progress-bar"><div class="progress-fill" style="width:${getStatusProgress(job.status)}%"></div></div>`;
 
     if (expanded) {
@@ -1586,6 +1624,9 @@ function renderBattleGrid() {
 }
 
 function renderCardDetail(job) {
+  const score = job.match_score || job.fit_score || 0;
+  const scoreColor = score >= 80 ? 'var(--green)' : score >= 60 ? 'var(--yellow)' : 'var(--dim)';
+
   let html = `<div class="card-detail">`;
   html += `<div class="card-detail-row">`;
 
@@ -1594,10 +1635,12 @@ function renderCardDetail(job) {
   html += `<h4>Details</h4>`;
   html += `<div style="font-size:12px;line-height:1.8;color:var(--dim)">`;
   html += `<div><strong style="color:var(--text)">Status:</strong> ${formatStatus(job.status)}</div>`;
-  if (job.source) html += `<div><strong style="color:var(--text)">Source:</strong> ${job.source}</div>`;
-  if (job.fit_score) html += `<div><strong style="color:var(--text)">Fit Score:</strong> ${job.fit_score}/100</div>`;
+  if (score > 0) html += `<div><strong style="color:var(--text)">Match Score:</strong> <span style="color:${scoreColor};font-weight:700">${score}/100</span></div>`;
+  if (job.source) html += `<div><strong style="color:var(--text)">Source:</strong> ${esc(job.source)}</div>`;
+  if (job.resume_variant || job.resume_version) html += `<div><strong style="color:var(--text)">Resume:</strong> ${esc(job.resume_variant || job.resume_version)}</div>`;
+  if (job.posting_status) html += `<div><strong style="color:var(--text)">Posting:</strong> <span style="color:${job.posting_status === 'dead' ? 'var(--red)' : 'var(--green)'}">${esc(job.posting_status)}</span></div>`;
   if (job.applied_at) html += `<div><strong style="color:var(--text)">Applied:</strong> ${formatDate(job.applied_at)}</div>`;
-  if (job.url) html += `<div><a href="${esc(job.url)}" target="_blank" style="color:var(--accent);text-decoration:none">View posting</a></div>`;
+  if (job.url) html += `<div><a href="${esc(job.url)}" target="_blank" style="color:var(--accent);text-decoration:none" onclick="event.stopPropagation()">View posting</a></div>`;
   if (job.notes) html += `<div style="margin-top:8px;font-style:italic">${esc(job.notes)}</div>`;
   html += `</div></div>`;
 
@@ -1606,15 +1649,28 @@ function renderCardDetail(job) {
   html += `<div class="card-detail-section">`;
   html += `<h4>Linked Contacts (${jobContacts.length})</h4>`;
   if (jobContacts.length > 0) {
-    html += jobContacts.map(c => `<div style="font-size:12px;margin-bottom:6px"><strong style="color:var(--text)">${esc(c.name)}</strong> <span style="color:var(--dim)">${esc(c.title || '')}</span></div>`).join('');
+    html += jobContacts.map(c => `<div style="font-size:12px;margin-bottom:6px"><strong style="color:var(--text)">${esc(c.name)}</strong> <span style="color:var(--dim)">${esc(c.title || '')}</span>${c.relationship_type ? ` <span class="relationship-badge rel-${c.relationship_type}" style="font-size:8px">${c.relationship_type.replace(/_/g, ' ')}</span>` : ''}</div>`).join('');
   } else {
     html += `<div style="font-size:12px;color:var(--dim)">No contacts linked to this company yet.</div>`;
   }
+
+  // Outreach draft section
+  if (job.outreach_draft) {
+    html += `<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">`;
+    html += `<h4 style="font-size:11px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Outreach Draft</h4>`;
+    html += `<div style="font-size:12px;color:var(--dim);font-style:italic;max-height:60px;overflow:hidden">"${esc(job.outreach_draft).substring(0, 150)}${job.outreach_draft.length > 150 ? '...' : ''}"</div>`;
+    html += `<button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="event.stopPropagation();showDraftByKey('${cacheDraft(job.outreach_draft)}')">View Full Draft</button>`;
+    html += `</div>`;
+  }
+
   html += `</div>`;
   html += `</div>`; // end row
 
   // Actions
   html += `<div class="card-detail-actions">`;
+  if (job.url) {
+    html += `<button class="btn btn-primary" onclick="event.stopPropagation();applyToJob('${job.id}','${esc(job.url)}')">Apply Now</button>`;
+  }
   if (job.status === 'new' || job.status === 'researching') {
     html += `<button class="btn btn-success" onclick="event.stopPropagation();updateJobStatus('${job.id}','applied')">Mark Applied</button>`;
   }
@@ -1649,12 +1705,11 @@ async function updateJobStatus(jobId, status) {
       body: JSON.stringify({ status }),
     });
     showToast(`Job updated to ${formatStatus(status)}`, 'success');
-    // Refresh
+    // Refresh data and re-render current view
     const jobsRes = await api('/jobs?limit=200');
     cachedJobs = jobsRes?.jobs || [];
     updateSideBadges();
-    renderBattleGrid();
-    renderStats();
+    refreshCurrentView();
   } catch (err) {
     showToast('Failed to update job: ' + err.message, 'error');
   }
@@ -1717,15 +1772,124 @@ function renderContactCard(c) {
 // RENDER: BATTLE PLAN VIEW
 // ============================================
 
+let cachedFollowupsBP = [];
+
 async function loadAndRenderBattlePlan() {
-  try {
-    const today = new Date().toISOString().split('T')[0];
-    const res = await api(`/battle-plan?date=${today}`);
-    cachedBattlePlan = res?.battle_plan || null;
-  } catch (err) {
-    cachedBattlePlan = null;
-  }
+  // Fetch battle plan and followups in parallel
+  const today = new Date().toISOString().split('T')[0];
+  const [planResult, followupsResult] = await Promise.allSettled([
+    api(`/battle-plan?date=${today}`),
+    api('/followups?days_ahead=7'),
+  ]);
+
+  cachedBattlePlan = planResult.status === 'fulfilled' ? (planResult.value?.battle_plan || null) : null;
+  cachedFollowupsBP = followupsResult.status === 'fulfilled' ? (followupsResult.value?.followups || []) : [];
+
   renderBattlePlan();
+}
+
+async function generateBattlePlan() {
+  showToast('Generating battle plan...', 'info');
+  try {
+    const plan = await api('/battle-plans/generate', { method: 'POST' });
+    cachedBattlePlan = plan?.battle_plan || plan || null;
+    await loadAndRenderBattlePlan();
+    showToast('Battle plan generated!', 'success');
+  } catch (err) {
+    showToast('Failed to generate: ' + err.message, 'error');
+  }
+}
+
+async function markBPFollowupDone(followupId) {
+  try {
+    await api(`/followups/${followupId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'done' }),
+    });
+    showToast('Follow-up marked done', 'success');
+    await loadAndRenderBattlePlan();
+    const summaryRes = await api('/summary');
+    cachedSummary = summaryRes;
+    updateSideBadges();
+  } catch (err) {
+    showToast('Failed: ' + err.message, 'error');
+  }
+}
+
+async function applyToJob(jobId, url) {
+  if (url) window.open(url, '_blank');
+  try {
+    await api('/jobs/' + jobId, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'applied' }),
+    });
+    showToast('Marked as applied', 'success');
+    await loadAllData();
+    refreshCurrentView();
+  } catch (err) {
+    showToast('Failed: ' + err.message, 'error');
+  }
+}
+
+function toggleBPSnooze(event, followupId) {
+  event.stopPropagation();
+  const dropdown = document.getElementById('bp-snooze-' + followupId);
+  document.querySelectorAll('.snooze-dropdown.show').forEach(d => {
+    if (d !== dropdown) d.classList.remove('show');
+  });
+  dropdown.classList.toggle('show');
+}
+
+async function snoozeBPFollowup(followupId, days) {
+  try {
+    await api(`/followups/${followupId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ days }),
+    });
+    showToast(`Snoozed ${days} day${days > 1 ? 's' : ''}`, 'success');
+    await loadAndRenderBattlePlan();
+  } catch (err) {
+    showToast('Failed to snooze: ' + err.message, 'error');
+  }
+}
+
+// Draft cache for safe onclick references
+const _draftCache = {};
+let _draftIdx = 0;
+
+function cacheDraft(text) {
+  const key = 'd' + (++_draftIdx);
+  _draftCache[key] = text;
+  return key;
+}
+
+function showDraftByKey(key) {
+  showDraftModal(_draftCache[key] || '(Draft not found)');
+}
+
+function showDraftModal(draft) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  const draftText = draft || '';
+  const modalEl = document.createElement('div');
+  modalEl.className = 'modal';
+  modalEl.style.maxWidth = '600px';
+  modalEl.innerHTML = `
+    <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">&#x2715;</button>
+    <h2 class="modal-title" style="font-size:18px;text-align:left;margin-bottom:16px">Outreach Draft</h2>
+    <div style="background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:12px;padding:20px;font-size:13px;line-height:1.8;color:var(--dim);white-space:pre-wrap;max-height:400px;overflow-y:auto">${esc(draftText)}</div>
+    <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end">
+      <button class="btn btn-ghost" id="_draftCopyBtn">Copy</button>
+      <button class="btn btn-primary" onclick="this.closest('.modal-overlay').remove()">Close</button>
+    </div>`;
+  overlay.appendChild(modalEl);
+  document.body.appendChild(overlay);
+  document.getElementById('_draftCopyBtn').onclick = () => {
+    navigator.clipboard.writeText(draftText);
+    showToast('Copied to clipboard', 'success');
+  };
+  document.body.appendChild(overlay);
 }
 
 function renderBattlePlan() {
@@ -1733,7 +1897,35 @@ function renderBattlePlan() {
   const queueEl = document.getElementById('actionQueue');
   const metaEl = document.getElementById('battleplan-meta');
   const queueMeta = document.getElementById('actionQueueMeta');
+  const statsEl = document.getElementById('battleplanStats');
 
+  const today = new Date().toISOString().split('T')[0];
+  const activeJobs = cachedJobs.filter(j => j.status !== 'closed' && j.status !== 'rejected');
+  const overdueFollowups = cachedFollowupsBP.filter(f => f.due_date < today);
+  const dueTodayFollowups = cachedFollowupsBP.filter(f => f.due_date === today);
+  const outreachPending = activeJobs.filter(j => j.status === 'new' || j.status === 'researching').length;
+
+  // Stats row
+  statsEl.innerHTML = `
+    <div class="stat-card" style="--glow-color:var(--accent)">
+      <div class="stat-num" style="background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent">${activeJobs.length}</div>
+      <div class="stat-label">In Pipeline</div>
+    </div>
+    <div class="stat-card" style="--glow-color:var(--yellow)">
+      <div class="stat-num" style="color:var(--yellow)">${outreachPending}</div>
+      <div class="stat-label">Outreach Pending</div>
+    </div>
+    <div class="stat-card" style="--glow-color:var(--red)">
+      <div class="stat-num" style="color:var(--red)">${overdueFollowups.length}</div>
+      <div class="stat-label">Overdue</div>
+    </div>
+    <div class="stat-card" style="--glow-color:var(--green)">
+      <div class="stat-num" style="color:var(--green)">${cachedSummary?.response_rate || 0}%</div>
+      <div class="stat-label">Response Rate</div>
+    </div>
+  `;
+
+  // Morning brief
   if (!cachedBattlePlan) {
     metaEl.textContent = 'No plan generated yet';
     briefingEl.innerHTML = `
@@ -1742,129 +1934,287 @@ function renderBattlePlan() {
           <span style="font-size:20px">&#129302;</span>
           <div>
             <div class="briefing-title">No Battle Plan Yet</div>
-            <div class="briefing-sub">Your AI will generate one during the nightly run, or ask it now.</div>
+            <div class="briefing-sub">Your AI generates one overnight, or click Generate Now.</div>
           </div>
         </div>
         <div class="briefing-text">
-          No battle plan for today. Connect your AI and ask it to <strong>"Generate today's battle plan"</strong> to get started. The plan will include prioritized actions based on your pipeline, follow-ups, and network activity.
+          No battle plan for today. Click <strong>Generate Now</strong> above to create one based on your pipeline, follow-ups, and network activity.
+        </div>
+        <div style="margin-top:16px">
+          <button class="btn btn-primary" onclick="generateBattlePlan()">Generate Now</button>
         </div>
       </div>`;
-    queueMeta.textContent = '';
+  } else {
+    const plan = cachedBattlePlan;
+    const planData = plan.plan_data || {};
+    const genDate = plan.generated_at ? new Date(plan.generated_at) : null;
+    const dateStr = genDate ? genDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) : 'Today';
+    const timeStr = genDate ? genDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '';
 
-    // Render jobs-based action items as fallback
-    const activeJobs = cachedJobs.filter(j => j.status !== 'closed' && j.status !== 'rejected').slice(0, 6);
-    if (activeJobs.length > 0) {
-      queueMeta.textContent = `${activeJobs.length} active targets`;
-      queueEl.innerHTML = activeJobs.map(job => {
-        const dotColor = job.status === 'interviewing' ? 'var(--yellow)' : job.status === 'applied' ? 'var(--cyan)' : 'var(--accent)';
-        return `
-          <div class="action-item">
-            <div class="action-dot" style="background:${dotColor}"></div>
-            <div class="action-body">
-              <div class="action-title">${esc(job.company)} - ${esc(job.title)}</div>
-              <div class="action-sub">Status: ${formatStatus(job.status)}${job.location ? ' | ' + esc(job.location) : ''}</div>
-            </div>
-            <div class="action-buttons">
-              ${job.status === 'new' || job.status === 'researching' ? `<button class="btn btn-success btn-sm" onclick="updateJobStatus('${job.id}','applied')">Mark Applied</button>` : ''}
-              ${job.status === 'applied' ? `<button class="btn btn-primary btn-sm" onclick="updateJobStatus('${job.id}','interviewing')">Interviewing</button>` : ''}
-            </div>
-          </div>`;
-      }).join('');
-    } else {
-      queueEl.innerHTML = '<div class="empty-state" style="padding:30px"><div class="empty-state-text">No actions queued. Add targets to your pipeline first.</div></div>';
-    }
-    return;
-  }
+    metaEl.textContent = `Generated ${dateStr}${timeStr ? ' at ' + timeStr : ''}`;
 
-  // We have a battle plan
-  const plan = cachedBattlePlan;
-  const planData = plan.plan_data || {};
-  const genDate = plan.generated_at ? new Date(plan.generated_at) : null;
-  const dateStr = genDate ? genDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) : 'Today';
-  const timeStr = genDate ? genDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '';
-
-  metaEl.textContent = `Generated by your AI - ${dateStr}`;
-
-  // Briefing
-  const summary = planData.summary || 'Your AI has analyzed your pipeline and generated today\'s action plan.';
-  briefingEl.innerHTML = `
-    <div class="briefing-card">
-      <div class="briefing-header">
-        <span style="font-size:20px">&#129302;</span>
-        <div>
-          <div class="briefing-title">AI Morning Brief</div>
-          <div class="briefing-sub">Generated ${timeStr} - based on your pipeline + calendar</div>
+    const summary = planData.summary || 'Your AI has analyzed your pipeline and generated today\'s action plan.';
+    briefingEl.innerHTML = `
+      <div class="briefing-card">
+        <div class="briefing-header">
+          <span style="font-size:20px">&#129302;</span>
+          <div>
+            <div class="briefing-title">Morning Brief</div>
+            <div class="briefing-sub">Generated ${timeStr || 'today'} from your pipeline + calendar</div>
+          </div>
         </div>
-      </div>
-      <div class="briefing-text">${summary}</div>
-    </div>`;
+        <div class="briefing-text">${summary}</div>
+      </div>`;
+  }
 
-  // Action queue from plan_data
-  const actions = planData.priority_actions || [];
-  const planJobs = planData.jobs || [];
-  const planContacts = planData.contacts_to_reach || [];
-  const allActions = [];
+  // Build merged action queue
+  const actionQueue = [];
 
-  // Add priority actions
-  actions.forEach((action, i) => {
-    allActions.push({ type: 'action', text: action, index: i });
+  // 1. Overdue followups (red, highest priority)
+  overdueFollowups.forEach(f => {
+    const daysDiff = Math.round((new Date(today) - new Date(f.due_date)) / 86400000);
+    const contactName = f.v2_contacts?.name || 'Unknown';
+    const company = f.v2_jobs?.company || f.v2_contacts?.company || '';
+    actionQueue.push({
+      priority: 0,
+      dotColor: 'var(--red)',
+      company: company,
+      role: '',
+      title: `${contactName}${company ? ' at ' + company : ''}`,
+      description: `Follow up - ${daysDiff} day${daysDiff !== 1 ? 's' : ''} overdue`,
+      matchScore: null,
+      contactName: contactName,
+      type: 'followup',
+      followupId: f.id,
+      jobId: f.job_id,
+      url: null,
+      draft: null,
+      daysInactive: daysDiff,
+    });
   });
 
-  // Add job actions
-  planJobs.forEach(pj => {
-    allActions.push({ type: 'job', ...pj });
+  // 2. Due-today followups (yellow)
+  dueTodayFollowups.forEach(f => {
+    const contactName = f.v2_contacts?.name || 'Unknown';
+    const company = f.v2_jobs?.company || f.v2_contacts?.company || '';
+    actionQueue.push({
+      priority: 1,
+      dotColor: 'var(--yellow)',
+      company: company,
+      role: '',
+      title: `${contactName}${company ? ' at ' + company : ''}`,
+      description: 'Follow up due today',
+      matchScore: null,
+      contactName: contactName,
+      type: 'followup',
+      followupId: f.id,
+      jobId: f.job_id,
+      url: null,
+      draft: null,
+      daysInactive: 0,
+    });
   });
 
-  // Add contact actions
-  planContacts.forEach(pc => {
-    allActions.push({ type: 'contact', ...pc });
+  // 3. New jobs with high match score (cyan)
+  const highMatchJobs = activeJobs
+    .filter(j => (j.status === 'new' || j.status === 'researching') && (j.match_score || j.fit_score || 0) >= 60)
+    .sort((a, b) => (b.match_score || b.fit_score || 0) - (a.match_score || a.fit_score || 0));
+
+  highMatchJobs.forEach(job => {
+    const score = job.match_score || job.fit_score || 0;
+    const daysSince = job.updated_at ? Math.round((new Date() - new Date(job.updated_at)) / 86400000) : 0;
+    const linkedContacts = cachedContacts.filter(c => c.company && job.company && c.company.toLowerCase() === job.company.toLowerCase());
+    actionQueue.push({
+      priority: 2,
+      dotColor: 'var(--cyan)',
+      company: job.company,
+      role: job.title,
+      title: `${esc(job.company)} - ${esc(job.title)}`,
+      description: score >= 80 ? 'High match - apply and send outreach' : 'Good match - review and apply',
+      matchScore: score,
+      contactName: linkedContacts.length > 0 ? linkedContacts[0].name : null,
+      type: 'job',
+      followupId: null,
+      jobId: job.id,
+      url: job.url,
+      draft: job.outreach_draft,
+      daysInactive: daysSince,
+    });
   });
 
-  queueMeta.textContent = `${allActions.length} items`;
+  // 4. Applied/active jobs needing attention (accent)
+  const staleJobs = activeJobs
+    .filter(j => j.status === 'applied' || j.status === 'interviewing')
+    .sort((a, b) => new Date(a.updated_at || 0) - new Date(b.updated_at || 0));
 
-  if (allActions.length === 0) {
-    queueEl.innerHTML = '<div class="empty-state" style="padding:30px"><div class="empty-state-text">No actions in today\'s plan.</div></div>';
+  staleJobs.forEach(job => {
+    const daysSince = job.updated_at ? Math.round((new Date() - new Date(job.updated_at)) / 86400000) : 0;
+    const score = job.match_score || job.fit_score || 0;
+    const linkedContacts = cachedContacts.filter(c => c.company && job.company && c.company.toLowerCase() === job.company.toLowerCase());
+    actionQueue.push({
+      priority: 3,
+      dotColor: job.status === 'interviewing' ? 'var(--yellow)' : 'var(--accent)',
+      company: job.company,
+      role: job.title,
+      title: `${esc(job.company)} - ${esc(job.title)}`,
+      description: daysSince >= 5 ? `Stale outreach - ${daysSince} days since update` : `${formatStatus(job.status)} - day ${daysSince}`,
+      matchScore: score,
+      contactName: linkedContacts.length > 0 ? linkedContacts[0].name : null,
+      type: 'job',
+      followupId: null,
+      jobId: job.id,
+      url: job.url,
+      draft: job.outreach_draft,
+      daysInactive: daysSince,
+    });
+  });
+
+  // 5. Low-match new jobs (monitoring, dim)
+  const monitoringJobs = activeJobs
+    .filter(j => (j.status === 'new' || j.status === 'researching') && (j.match_score || j.fit_score || 0) < 60)
+    .slice(0, 5);
+
+  monitoringJobs.forEach(job => {
+    const score = job.match_score || job.fit_score || 0;
+    const daysSince = job.updated_at ? Math.round((new Date() - new Date(job.updated_at)) / 86400000) : 0;
+    actionQueue.push({
+      priority: 4,
+      dotColor: 'var(--dim)',
+      company: job.company,
+      role: job.title,
+      title: `${esc(job.company)} - ${esc(job.title)}`,
+      description: `Monitoring - day ${daysSince}`,
+      matchScore: score,
+      contactName: null,
+      type: 'job',
+      followupId: null,
+      jobId: job.id,
+      url: job.url,
+      draft: job.outreach_draft,
+      daysInactive: daysSince,
+    });
+  });
+
+  // Add battle plan priority actions if plan exists
+  if (cachedBattlePlan) {
+    const planData = cachedBattlePlan.plan_data || {};
+    const priorityActions = planData.priority_actions || [];
+    priorityActions.forEach((action, i) => {
+      actionQueue.push({
+        priority: 1,
+        dotColor: 'var(--accent)',
+        company: '',
+        role: '',
+        title: action,
+        description: 'From today\'s battle plan',
+        matchScore: null,
+        contactName: null,
+        type: 'planAction',
+        followupId: null,
+        jobId: null,
+        url: null,
+        draft: null,
+        daysInactive: 0,
+      });
+    });
+
+    // Plan contacts to reach
+    const planContacts = planData.contacts_to_reach || [];
+    planContacts.forEach(pc => {
+      actionQueue.push({
+        priority: 2,
+        dotColor: 'var(--cyan)',
+        company: pc.company || '',
+        role: '',
+        title: `${esc(pc.suggested_action || 'Reach out to')} ${esc(pc.name || '')}`,
+        description: pc.company ? `at ${pc.company}` : 'Network outreach',
+        matchScore: null,
+        contactName: pc.name,
+        type: 'contactAction',
+        followupId: null,
+        jobId: null,
+        url: null,
+        draft: null,
+        daysInactive: 0,
+      });
+    });
+  }
+
+  // Sort by priority
+  actionQueue.sort((a, b) => a.priority - b.priority);
+
+  queueMeta.textContent = `${actionQueue.length} item${actionQueue.length !== 1 ? 's' : ''}`;
+
+  if (actionQueue.length === 0) {
+    queueEl.innerHTML = `
+      <div class="empty-state" style="padding:40px">
+        <div class="empty-state-icon">&#9889;</div>
+        <div class="empty-state-title">No actions queued</div>
+        <div class="empty-state-text">Add targets to your pipeline first, then generate a battle plan.</div>
+        <div style="margin-top:16px"><button class="btn btn-primary" onclick="generateBattlePlan()">Generate Now</button></div>
+      </div>`;
     return;
   }
 
-  queueEl.innerHTML = allActions.map(item => {
-    if (item.type === 'action') {
-      return `
-        <div class="action-item">
-          <div class="action-dot" style="background:var(--accent)"></div>
-          <div class="action-body">
-            <div class="action-title">${esc(item.text)}</div>
+  queueEl.innerHTML = actionQueue.map(item => {
+    // Match score badge
+    let scoreBadge = '';
+    if (item.matchScore !== null && item.matchScore > 0) {
+      const scoreColor = item.matchScore >= 80 ? 'var(--green)' : item.matchScore >= 60 ? 'var(--yellow)' : 'var(--dim)';
+      const scoreBg = item.matchScore >= 80 ? 'rgba(34,197,94,.12)' : item.matchScore >= 60 ? 'rgba(234,179,8,.1)' : 'rgba(255,255,255,.04)';
+      scoreBadge = `<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;color:${scoreColor};background:${scoreBg};border:1px solid ${scoreColor}30;margin-left:8px">${item.matchScore}%</span>`;
+    }
+
+    // Contact tag
+    let contactTag = '';
+    if (item.contactName) {
+      contactTag = `<span style="font-size:11px;color:var(--cyan);margin-left:8px">&#128100; ${esc(item.contactName)}</span>`;
+    }
+
+    // Days inactive
+    let daysTag = '';
+    if (item.daysInactive > 0 && item.type === 'job') {
+      daysTag = `<span style="font-size:10px;color:var(--dim);margin-left:8px">${item.daysInactive}d ago</span>`;
+    }
+
+    // Action buttons
+    let buttons = '';
+    if (item.type === 'followup') {
+      buttons = `
+        <button class="btn btn-success btn-sm" onclick="markBPFollowupDone('${item.followupId}')">Mark Done</button>
+        <div style="position:relative">
+          <button class="btn btn-ghost btn-sm" onclick="toggleBPSnooze(event, '${item.followupId}')">Snooze</button>
+          <div class="snooze-dropdown" id="bp-snooze-${item.followupId}">
+            <div class="snooze-option" onclick="snoozeBPFollowup('${item.followupId}', 1)">1 day</div>
+            <div class="snooze-option" onclick="snoozeBPFollowup('${item.followupId}', 3)">3 days</div>
+            <div class="snooze-option" onclick="snoozeBPFollowup('${item.followupId}', 7)">7 days</div>
           </div>
         </div>`;
+    } else if (item.type === 'job') {
+      if (item.url) {
+        buttons += `<button class="btn btn-primary btn-sm" onclick="applyToJob('${item.jobId}', '${esc(item.url)}')">Apply Now</button>`;
+      }
+      if (item.jobId) {
+        buttons += `<button class="btn btn-success btn-sm" onclick="updateJobStatus('${item.jobId}','applied')">Mark Done</button>`;
+      }
+      if (item.draft) {
+        const draftKey = cacheDraft(item.draft);
+        buttons += `<button class="btn btn-ghost btn-sm" onclick="showDraftByKey('${draftKey}')">View Draft</button>`;
+      }
+    } else if (item.type === 'contactAction') {
+      buttons += `<button class="btn btn-ghost btn-sm" onclick="window.open('https://www.linkedin.com','_blank')">LinkedIn</button>`;
+      buttons += `<button class="btn btn-ghost btn-sm" onclick="window.open('https://mail.google.com','_blank')">Gmail</button>`;
     }
-    if (item.type === 'job') {
-      return `
-        <div class="action-item">
-          <div class="action-dot" style="background:var(--yellow)"></div>
-          <div class="action-body">
-            <div class="action-title">${esc(item.company || '')} - ${esc(item.title || '')}</div>
-            <div class="action-sub">${esc(item.action || '')}</div>
-          </div>
-          <div class="action-buttons">
-            ${item.id ? `<button class="btn btn-success btn-sm" onclick="updateJobStatus('${item.id}','applied')">Mark Applied</button>` : ''}
-          </div>
-        </div>`;
-    }
-    if (item.type === 'contact') {
-      return `
-        <div class="action-item">
-          <div class="action-dot" style="background:var(--cyan)"></div>
-          <div class="action-body">
-            <div class="action-title">${esc(item.suggested_action || 'Reach out to')} ${esc(item.name || '')}</div>
-            <div class="action-sub">${esc(item.company || '')}</div>
-          </div>
-          <div class="action-buttons">
-            <button class="btn btn-ghost btn-sm" onclick="window.open('https://www.linkedin.com','_blank')">Open LinkedIn</button>
-            <button class="btn btn-ghost btn-sm" onclick="window.open('https://mail.google.com','_blank')">Open Gmail</button>
-          </div>
-        </div>`;
-    }
-    return '';
+
+    return `
+      <div class="action-item">
+        <div class="action-dot" style="background:${item.dotColor}"></div>
+        <div class="action-body">
+          <div class="action-title">${item.title}${scoreBadge}${contactTag}</div>
+          <div class="action-sub">${esc(item.description)}${daysTag}</div>
+        </div>
+        <div class="action-buttons" style="position:relative">${buttons}</div>
+      </div>`;
   }).join('');
 }
 
@@ -1872,31 +2222,37 @@ function renderBattlePlan() {
 // RENDER: PIPELINE VIEW
 // ============================================
 
+let expandedPipelineRow = null;
+
 function renderPipeline() {
   const summary = cachedSummary;
   const jobs = cachedJobs;
 
   const totalActive = jobs.filter(j => j.status !== 'closed' && j.status !== 'rejected').length;
+  const rejectedCount = jobs.filter(j => j.status === 'rejected' || j.status === 'closed').length;
   document.getElementById('pipeline-meta').textContent = `${totalActive} active targets`;
   document.getElementById('targetsCount').textContent = `${jobs.length} total`;
 
-  // Funnel
-  const statusCounts = { new: 0, researching: 0, applied: 0, interviewing: 0, offer: 0 };
-  jobs.forEach(j => {
-    if (statusCounts.hasOwnProperty(j.status)) statusCounts[j.status]++;
-  });
-  const maxCount = Math.max(1, ...Object.values(statusCounts));
+  // Funnel - 5 columns: new/researching, applied, interviewing, offer, closed/rejected
+  const funnelCounts = {
+    newResearching: jobs.filter(j => j.status === 'new' || j.status === 'researching').length,
+    applied: jobs.filter(j => j.status === 'applied').length,
+    interviewing: jobs.filter(j => j.status === 'interviewing').length,
+    offer: jobs.filter(j => j.status === 'offer').length,
+    closedRejected: jobs.filter(j => j.status === 'closed' || j.status === 'rejected').length,
+  };
+  const maxCount = Math.max(1, ...Object.values(funnelCounts));
 
   const funnelStages = [
-    { key: 'new', label: 'New', color: 'var(--dim)', borderColor: 'var(--border)' },
-    { key: 'researching', label: 'Researching', color: 'var(--accent)', borderColor: 'rgba(99,102,241,.3)' },
-    { key: 'applied', label: 'Applied', color: 'var(--cyan)', borderColor: 'rgba(6,182,212,.3)' },
+    { key: 'newResearching', label: 'New / Research', color: 'var(--dim)', borderColor: 'var(--border)' },
+    { key: 'applied', label: 'Applied', color: 'var(--accent)', borderColor: 'rgba(99,102,241,.3)' },
     { key: 'interviewing', label: 'Interviewing', color: 'var(--yellow)', borderColor: 'rgba(234,179,8,.3)' },
     { key: 'offer', label: 'Offer', color: 'var(--green)', borderColor: 'rgba(34,197,94,.3)' },
+    { key: 'closedRejected', label: 'Closed', color: 'var(--red)', borderColor: 'rgba(239,68,68,.3)' },
   ];
 
   document.getElementById('pipelineFunnel').innerHTML = funnelStages.map(s => {
-    const count = statusCounts[s.key];
+    const count = funnelCounts[s.key];
     const pct = Math.round((count / maxCount) * 100);
     return `
       <div class="funnel-card" style="border-color:${s.borderColor}">
@@ -1917,30 +2273,83 @@ function renderPipeline() {
   // Network total
   document.getElementById('networkTotal').textContent = `+${cachedContacts.length} total`;
 
-  // Table
+  // Table - sorted by fit_score descending
   const tbody = document.getElementById('pipelineTableBody');
   if (jobs.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--dim);padding:40px">No targets yet. Add jobs through your connected AI.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--dim);padding:40px">No targets yet. Add jobs through your connected AI.</td></tr>';
     return;
   }
 
-  tbody.innerHTML = jobs.map(job => {
+  const sortedJobs = [...jobs].sort((a, b) => (b.match_score || b.fit_score || 0) - (a.match_score || a.fit_score || 0));
+
+  tbody.innerHTML = sortedJobs.map(job => {
     const salary = formatSalary(job);
     const lastTouch = job.updated_at ? timeAgo(job.updated_at) : 'N/A';
-    const heat = job.status === 'interviewing' || job.status === 'offer' ? 3 : job.status === 'applied' ? 2 : 1;
-    const heatStr = Array(heat).fill('&#128293;').join('');
-    const heatColor = heat >= 3 ? 'var(--yellow)' : heat >= 2 ? 'var(--orange)' : 'var(--dim)';
+    const score = job.match_score || job.fit_score || 0;
+    const scoreColor = score >= 80 ? 'var(--green)' : score >= 60 ? 'var(--yellow)' : 'var(--dim)';
+    const scoreBg = score >= 80 ? 'rgba(34,197,94,.12)' : score >= 60 ? 'rgba(234,179,8,.1)' : 'rgba(255,255,255,.04)';
+    const resumeVariant = job.resume_variant || job.resume_version || null;
+    const isExpanded = expandedPipelineRow === job.id;
 
-    return `
-      <tr onclick="navigateTo('warroom');expandCard('${job.id}')">
+    let row = `
+      <tr onclick="togglePipelineRow('${job.id}')" style="cursor:pointer${isExpanded ? ';background:rgba(99,102,241,.04)' : ''}">
         <td style="font-weight:600">${esc(job.company)}</td>
         <td style="color:var(--dim)">${esc(job.title)}</td>
         <td><span class="tag stage-${job.status}" style="font-size:10px">${formatStatus(job.status)}</span></td>
         <td style="color:${salary ? 'var(--green)' : 'var(--dim)'}">${salary || 'TBD'}</td>
+        <td><span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;color:${scoreColor};background:${scoreBg};border:1px solid ${scoreColor}30">${score > 0 ? score + '%' : '--'}</span></td>
         <td style="color:var(--dim)">${lastTouch}</td>
-        <td><span style="color:${heatColor}">${heatStr}</span></td>
+        <td style="color:var(--dim);font-size:11px">${resumeVariant ? esc(resumeVariant) : '<span style="color:var(--dim)">--</span>'}</td>
       </tr>`;
+
+    if (isExpanded) {
+      const jobContacts = cachedContacts.filter(c => c.company && job.company && c.company.toLowerCase() === job.company.toLowerCase());
+      row += `
+        <tr style="background:rgba(99,102,241,.02)">
+          <td colspan="7" style="padding:0">
+            <div style="padding:16px 20px;display:flex;gap:16px;flex-wrap:wrap">
+              <div style="flex:1;min-width:220px;background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:10px;padding:14px">
+                <h4 style="font-size:11px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">Linked Contacts (${jobContacts.length})</h4>
+                ${jobContacts.length > 0
+                  ? jobContacts.map(c => `<div style="font-size:12px;margin-bottom:6px"><strong style="color:var(--text)">${esc(c.name)}</strong> <span style="color:var(--dim)">${esc(c.title || '')}</span>${c.relationship_type ? ` <span class="relationship-badge rel-${c.relationship_type}" style="font-size:8px">${c.relationship_type.replace(/_/g, ' ')}</span>` : ''}</div>`).join('')
+                  : '<div style="font-size:12px;color:var(--dim)">No contacts linked to this company.</div>'
+                }
+              </div>
+              <div style="flex:1;min-width:220px;background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:10px;padding:14px">
+                <h4 style="font-size:11px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">Details</h4>
+                <div style="font-size:12px;line-height:1.8;color:var(--dim)">
+                  ${job.source ? `<div><strong style="color:var(--text)">Source:</strong> ${esc(job.source)}</div>` : ''}
+                  ${job.location ? `<div><strong style="color:var(--text)">Location:</strong> ${esc(job.location)}${job.remote ? ' (Remote)' : ''}</div>` : ''}
+                  ${job.applied_at ? `<div><strong style="color:var(--text)">Applied:</strong> ${formatDate(job.applied_at)}</div>` : ''}
+                  ${job.url ? `<div><a href="${esc(job.url)}" target="_blank" style="color:var(--accent);text-decoration:none" onclick="event.stopPropagation()">View posting</a></div>` : ''}
+                  ${job.notes ? `<div style="margin-top:6px;font-style:italic">${esc(job.notes)}</div>` : ''}
+                </div>
+                ${job.outreach_draft ? `
+                  <div style="margin-top:10px">
+                    <h4 style="font-size:11px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Outreach Draft</h4>
+                    <div style="font-size:12px;color:var(--dim);font-style:italic;max-height:80px;overflow:hidden;text-overflow:ellipsis">"${esc(job.outreach_draft).substring(0, 200)}${job.outreach_draft.length > 200 ? '...' : ''}"</div>
+                    <button class="btn btn-ghost btn-sm" style="margin-top:6px" onclick="event.stopPropagation();showDraftByKey('${cacheDraft(job.outreach_draft)}')">View Full Draft</button>
+                  </div>` : ''}
+              </div>
+              <div style="width:100%;display:flex;gap:8px;flex-wrap:wrap;padding-top:4px">
+                ${job.status === 'new' || job.status === 'researching' ? `<button class="btn btn-success btn-sm" onclick="event.stopPropagation();updateJobStatus('${job.id}','applied')">Mark Applied</button>` : ''}
+                ${job.status === 'applied' ? `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();updateJobStatus('${job.id}','interviewing')">Move to Interviewing</button>` : ''}
+                ${job.status === 'interviewing' ? `<button class="btn btn-success btn-sm" onclick="event.stopPropagation();updateJobStatus('${job.id}','offer')">Mark Offer</button>` : ''}
+                ${job.status !== 'rejected' ? `<button class="btn btn-danger btn-sm" onclick="event.stopPropagation();updateJobStatus('${job.id}','rejected')">Reject</button>` : ''}
+                ${job.status !== 'closed' && job.status !== 'rejected' ? `<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();updateJobStatus('${job.id}','closed')">Close</button>` : ''}
+              </div>
+            </div>
+          </td>
+        </tr>`;
+    }
+
+    return row;
   }).join('');
+}
+
+function togglePipelineRow(jobId) {
+  expandedPipelineRow = expandedPipelineRow === jobId ? null : jobId;
+  renderPipeline();
 }
 
 // ============================================
