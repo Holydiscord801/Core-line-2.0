@@ -1,7 +1,19 @@
 import { Router, Request, Response } from 'express';
 import { supabase } from '../../lib/supabase.js';
+import { findCrossJobContacts } from '../../utils/email-monitor.js';
 
 const router = Router();
+
+// GET /api/contacts/cross-job - Find contacts linked to multiple jobs
+router.get('/cross-job', async (req: Request, res: Response) => {
+  try {
+    const userId = req.userId!;
+    const contacts = await findCrossJobContacts(userId);
+    res.json(contacts);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // GET /api/contacts
 router.get('/', async (req: Request, res: Response) => {

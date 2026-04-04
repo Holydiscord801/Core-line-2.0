@@ -19,6 +19,16 @@ import type {
   OutreachOutcome,
   RelationshipType,
   PipelineSummary,
+  SearchJobsParams,
+  ScoreJobParams,
+  ScoreResult,
+  VerifyPostingParams,
+  GenerateOutreachParams,
+  CreateGmailDraftParams,
+  CheckEmailResponsesParams,
+  BulkImportJobsParams,
+  TimerType,
+  PostingStatus,
 } from '../types/index.js';
 import crypto from 'crypto';
 
@@ -315,6 +325,204 @@ const tools: Tool[] = [
         },
       },
       required: ['followup_id', 'days'],
+    },
+  },
+  {
+    name: 'get_system_instructions',
+    description: 'Returns the system instructions for any AI connecting to Core Line. Call this FIRST when starting a session. Returns: what Core Line is, available tools, the daily workflow, and how to format responses. No authentication required for this call.',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'search_jobs',
+    description: 'Returns a structured search prompt and parameters for finding jobs on LinkedIn/Indeed. The AI uses these parameters to search job boards with freshness filters. Returns search URLs, filters to apply, and the format to return results in.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        keywords: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Job title keywords to search for (e.g., ["VP Engineering", "CTO", "Director of Engineering"]).',
+        },
+        location: {
+          type: 'string',
+          description: 'Location filter (e.g., "Salt Lake City, UT" or "Remote").',
+        },
+        remote_only: {
+          type: 'boolean',
+          description: 'Only return remote-friendly positions.',
+        },
+        salary_min: {
+          type: 'number',
+          description: 'Minimum salary filter (annual USD).',
+        },
+        freshness_hours: {
+          type: 'number',
+          description: 'Only jobs posted within this many hours. Default 24.',
+        },
+      },
+      required: ['keywords'],
+    },
+  },
+  {
+    name: 'score_job',
+    description: 'Scores a job against the user profile. Returns a fit_score (0-100) with a breakdown by category: title match (25%), salary range (20%), remote preference (15%), company stage (15%), industry fit (15%), reporting level (10%). Use this after finding jobs to prioritize the pipeline.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        job_id: {
+          type: 'string',
+          description: 'UUID of an existing job to score. If provided, loads job details from DB.',
+        },
+        title: {
+          type: 'string',
+          description: 'Job title (used if job_id not provided).',
+        },
+        company: {
+          type: 'string',
+          description: 'Company name.',
+        },
+        salary_min: {
+          type: 'number',
+          description: 'Minimum salary.',
+        },
+        salary_max: {
+          type: 'number',
+          description: 'Maximum salary.',
+        },
+        location: {
+          type: 'string',
+          description: 'Job location.',
+        },
+        remote: {
+          type: 'boolean',
+          description: 'Whether remote.',
+        },
+        description: {
+          type: 'string',
+          description: 'Job description text for deeper analysis.',
+        },
+      },
+      required: ['title', 'company'],
+    },
+  },
+  {
+    name: 'verify_posting',
+    description: 'Verifies whether a job posting is still live. Updates the posting_status and posting_verified_at fields. Returns the current status and instructions for the AI to check the URL.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        job_id: {
+          type: 'string',
+          description: 'UUID of the job to verify.',
+        },
+        status: {
+          type: 'string',
+          enum: ['live', 'dead', 'expired', 'unknown'],
+          description: 'The posting status after verification. If omitted, returns instructions to check.',
+        },
+      },
+      required: ['job_id'],
+    },
+  },
+  {
+    name: 'generate_outreach',
+    description: 'Generates a personalized outreach message for a specific job and contact. Uses the user profile, job details, and contact information to create a tailored message. Returns a template the AI should customize further.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        job_id: {
+          type: 'string',
+          description: 'UUID of the target job.',
+        },
+        contact_id: {
+          type: 'string',
+          description: 'UUID of the contact to reach out to.',
+        },
+        tone: {
+          type: 'string',
+          enum: ['professional', 'warm', 'direct'],
+          description: 'Tone for the outreach. Default: professional.',
+        },
+      },
+      required: ['job_id', 'contact_id'],
+    },
+  },
+  {
+    name: 'create_gmail_draft',
+    description: 'Creates a Gmail draft for outreach. Logs the draft in Core Line and provides instructions for the AI to create the actual Gmail draft via Gmail MCP tools. Links the draft to a job and contact for tracking.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        to: {
+          type: 'string',
+          description: 'Recipient email address.',
+        },
+        subject: {
+          type: 'string',
+          description: 'Email subject line.',
+        },
+        body: {
+          type: 'string',
+          description: 'Email body text.',
+        },
+        job_id: {
+          type: 'string',
+          description: 'UUID of the related job.',
+        },
+        contact_id: {
+          type: 'string',
+          description: 'UUID of the related contact.',
+        },
+      },
+      required: ['to', 'subject', 'body'],
+    },
+  },
+  {
+    name: 'check_email_responses',
+    description: 'Returns all sent outreach messages that have not received a response yet. The AI should check Gmail for replies to these threads and report back using mark_outreach_response(). Run this every 2 hours during work hours.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        days_back: {
+          type: 'number',
+          description: 'How many days back to check. Default 14.',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'bulk_import_jobs',
+    description: 'Imports multiple jobs at once from a nightly search. Creates v2_jobs rows for each, auto-scores them against user profile, and returns a summary. Use this after search_jobs() to save discovered opportunities.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        jobs: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              title: { type: 'string' },
+              company: { type: 'string' },
+              url: { type: 'string' },
+              salary_min: { type: 'number' },
+              salary_max: { type: 'number' },
+              location: { type: 'string' },
+              remote: { type: 'boolean' },
+              fit_score: { type: 'number' },
+              source: { type: 'string' },
+              notes: { type: 'string' },
+            },
+            required: ['title', 'company', 'url'],
+          },
+          description: 'Array of job objects to import.',
+        },
+      },
+      required: ['jobs'],
     },
   },
 ];
@@ -758,6 +966,482 @@ async function snoozeFollowup(followupId: string, days: number): Promise<V2Follo
 }
 
 // ============================================
+// New Tool Implementations
+// ============================================
+
+async function getSystemInstructions(): Promise<object> {
+  const instructions = `# Core Line 2.0 - AI System Instructions
+
+You are connected to Core Line, a job search command center. The user has connected you via MCP to help manage their job search pipeline.
+
+## What Core Line Is
+Core Line is infrastructure, not AI. YOU are the AI. Core Line provides the database, the dashboard, and the tools. You do the thinking, searching, scoring, and writing.
+
+## Your Daily Workflow
+1. Call get_profile() to load user preferences and resume
+2. Call get_battle_plan() to see today's priorities
+3. Call get_followups_due() to check overdue follow-ups
+4. Call get_pipeline_summary() for pipeline health
+5. Execute actions: search for jobs, score matches, write outreach, log activities
+
+## Available Tools (${tools.length} total)
+${tools.map(t => '- ' + t.name + ': ' + (t.description || '').split('.')[0]).join('\n')}
+
+## How to Format Battle Plans
+When generating a battle plan, structure it as:
+- PRIORITY 1: URGENT FOLLOW-UPS (timers expired)
+- PRIORITY 2: DUE TODAY (timers expiring)
+- PRIORITY 3: NEW OPPORTUNITIES (from search)
+- PRIORITY 4: PIPELINE HEALTH (stale items)
+
+## Key Rules
+- "Core Line" is always two words
+- Business days only for follow-up timers (skip weekends)
+- Jobs scoring 70%+ get automatic deep research + outreach
+- Always log outreach after sending messages
+- Check for email responses every 2 hours during work hours
+- Follow-up escalation: 3 days, then 5 days, then escalate to another contact, then archive at 14 days`;
+
+  return {
+    instructions,
+    version: '2.0.0',
+    tools_available: tools.length,
+  };
+}
+
+async function searchJobs(params: SearchJobsParams): Promise<object> {
+  const userId = requireAuth();
+  const profile = await getProfile();
+
+  const freshness = params.freshness_hours || 24;
+  const location = params.location || profile.preferences?.locations?.[0] || 'United States';
+  const salaryMin = params.salary_min || profile.preferences?.salary_floor || 0;
+
+  return {
+    search_instructions: `Search for jobs matching these criteria and return structured results.`,
+    parameters: {
+      keywords: params.keywords,
+      location,
+      remote_only: params.remote_only || profile.preferences?.remote_ok || false,
+      salary_min: salaryMin,
+      freshness_filter: `Posted within last ${freshness} hours`,
+      linkedin_url_hint: `Use LinkedIn search with f_TPR=r${freshness * 3600} for freshness filtering`,
+      indeed_url_hint: `Use Indeed search with fromage=1 for last 24 hours`,
+    },
+    user_profile: {
+      target_roles: profile.preferences?.role_types || [],
+      industries: profile.preferences?.industries || [],
+      salary_floor: profile.preferences?.salary_floor,
+    },
+    return_format: {
+      description: 'Return each job as a JSON object with these fields',
+      fields: ['title', 'company', 'url', 'salary_min', 'salary_max', 'location', 'remote', 'description', 'posted_at'],
+    },
+    next_step: 'After finding jobs, call bulk_import_jobs() to save them, then score_job() for each.',
+  };
+}
+
+async function scoreJob(params: ScoreJobParams): Promise<ScoreResult> {
+  const userId = requireAuth();
+  const profile = await getProfile();
+  const prefs = profile.preferences || {};
+
+  let jobData = params;
+
+  // Load from DB if job_id provided
+  if (params.job_id) {
+    const { data } = await supabase
+      .from('v2_jobs')
+      .select('*')
+      .eq('id', params.job_id)
+      .eq('user_id', userId)
+      .single();
+    if (data) {
+      jobData = { ...params, ...data };
+    }
+  }
+
+  // Title match (25 points)
+  const targetRoles = prefs.role_types || [];
+  const titleLower = (jobData.title || '').toLowerCase();
+  let titleScore = 0;
+  for (const role of targetRoles) {
+    if (titleLower.includes(role.toLowerCase())) {
+      titleScore = 25;
+      break;
+    }
+  }
+  if (titleScore === 0) {
+    const seniorKeywords = ['vp', 'vice president', 'director', 'head of', 'chief', 'cto', 'cio', 'svp'];
+    if (seniorKeywords.some(k => titleLower.includes(k))) {
+      titleScore = 15;
+    }
+  }
+
+  // Salary range (20 points)
+  const salaryFloor = prefs.salary_floor || 0;
+  let salaryScore = 0;
+  if (jobData.salary_max && jobData.salary_max >= salaryFloor) {
+    salaryScore = 20;
+  } else if (jobData.salary_min && jobData.salary_min >= salaryFloor * 0.9) {
+    salaryScore = 15;
+  } else if (!jobData.salary_min && !jobData.salary_max) {
+    salaryScore = 10; // Unknown salary, give benefit of doubt
+  }
+
+  // Remote preference (15 points)
+  let remoteScore = 0;
+  if (prefs.remote_ok) {
+    if (jobData.remote) {
+      remoteScore = 15;
+    } else {
+      const prefLocations = (prefs.locations || []).map((l: string) => l.toLowerCase());
+      const jobLoc = (jobData.location || '').toLowerCase();
+      if (prefLocations.some((l: string) => jobLoc.includes(l))) {
+        remoteScore = 12;
+      } else {
+        remoteScore = 5;
+      }
+    }
+  } else {
+    remoteScore = jobData.remote ? 8 : 15;
+  }
+
+  // Company stage (15 points) - give default score, AI can refine
+  const companyScore = 10;
+
+  // Industry fit (15 points)
+  const targetIndustries = prefs.industries || [];
+  let industryScore = 8; // default
+  const descLower = (jobData.description || '').toLowerCase();
+  for (const ind of targetIndustries) {
+    if (descLower.includes(ind.toLowerCase())) {
+      industryScore = 15;
+      break;
+    }
+  }
+
+  // Reporting level (10 points)
+  let reportingScore = 5;
+  if (titleLower.includes('vp') || titleLower.includes('svp') || titleLower.includes('chief') || titleLower.includes('cto') || titleLower.includes('cio')) {
+    reportingScore = 10;
+  } else if (titleLower.includes('director') || titleLower.includes('head')) {
+    reportingScore = 8;
+  }
+
+  const fitScore = titleScore + salaryScore + remoteScore + companyScore + industryScore + reportingScore;
+
+  const result: ScoreResult = {
+    fit_score: Math.min(100, fitScore),
+    breakdown: {
+      title_match: titleScore,
+      salary_range: salaryScore,
+      remote_preference: remoteScore,
+      company_stage: companyScore,
+      industry_fit: industryScore,
+      reporting_level: reportingScore,
+    },
+    recommendation: fitScore >= 70 ? 'Strong match. Proceed with outreach and application.' :
+                     fitScore >= 50 ? 'Moderate match. Review before investing time.' :
+                     'Weak match. Consider skipping unless other factors are compelling.',
+  };
+
+  // Update job in DB if job_id provided
+  if (params.job_id) {
+    await supabase
+      .from('v2_jobs')
+      .update({ fit_score: result.fit_score, match_score: result.fit_score })
+      .eq('id', params.job_id)
+      .eq('user_id', userId);
+  }
+
+  return result;
+}
+
+async function verifyPosting(params: VerifyPostingParams & { status?: string }): Promise<object> {
+  const userId = requireAuth();
+
+  const { data: job } = await supabase
+    .from('v2_jobs')
+    .select('id, title, company, url, posting_status, posting_verified_at')
+    .eq('id', params.job_id)
+    .eq('user_id', userId)
+    .single();
+
+  if (!job) throw new Error('Job not found');
+
+  if (params.status) {
+    // Update the status
+    const { data: updated } = await supabase
+      .from('v2_jobs')
+      .update({
+        posting_status: params.status,
+        posting_verified_at: new Date().toISOString(),
+      })
+      .eq('id', params.job_id)
+      .eq('user_id', userId)
+      .select()
+      .single();
+
+    return {
+      job_id: params.job_id,
+      status: params.status,
+      checked_at: new Date().toISOString(),
+      updated: true,
+    };
+  }
+
+  // Return instructions to check
+  return {
+    job_id: job.id,
+    title: job.title,
+    company: job.company,
+    url: job.url,
+    current_status: job.posting_status,
+    last_verified: job.posting_verified_at,
+    instructions: job.url
+      ? `Visit ${job.url} and check if the posting is still active. Then call verify_posting again with status='live' or status='dead'.`
+      : 'No URL on file. Ask the user for the job posting URL or search for it.',
+  };
+}
+
+async function generateOutreach(params: GenerateOutreachParams): Promise<object> {
+  const userId = requireAuth();
+  const profile = await getProfile();
+
+  const { data: job } = await supabase
+    .from('v2_jobs')
+    .select('*')
+    .eq('id', params.job_id)
+    .eq('user_id', userId)
+    .single();
+
+  if (!job) throw new Error('Job not found');
+
+  const { data: contact } = await supabase
+    .from('v2_contacts')
+    .select('*')
+    .eq('id', params.contact_id)
+    .eq('user_id', userId)
+    .single();
+
+  if (!contact) throw new Error('Contact not found');
+
+  const tone = params.tone || 'professional';
+
+  return {
+    context: {
+      user_name: profile.full_name,
+      user_summary: profile.resume_text?.substring(0, 500),
+      job_title: job.title,
+      company: job.company,
+      contact_name: contact.name,
+      contact_title: contact.title,
+      contact_relationship: contact.relationship_type,
+      contact_email: contact.email,
+    },
+    instructions: `Write a personalized ${tone} outreach message from ${profile.full_name} to ${contact.name} (${contact.title} at ${job.company}) about the ${job.title} role.
+
+Key points to include:
+- Reference ${contact.name}'s role as ${contact.title}
+- Connect user's background (${profile.resume_text?.substring(0, 200)}) to the ${job.title} role
+- ${contact.relationship_type === 'hiring_manager' ? 'Address as the hiring decision maker' :
+  contact.relationship_type === 'recruiter' ? 'Reference the open role and express interest' :
+  contact.relationship_type === 'mutual_connection' ? 'Mention the mutual connection' :
+  'Be professional and concise'}
+- Keep it under 150 words
+- End with a specific ask (15-min call, coffee chat, or referral)`,
+    tone,
+    subject_line_suggestions: [
+      `Re: ${job.title} at ${job.company}`,
+      `${profile.full_name} - ${job.title} Interest`,
+      `Quick question about ${job.company}`,
+    ],
+    next_steps: [
+      'Customize this template with specific details',
+      'Call create_gmail_draft() to save as a Gmail draft',
+      'Or call log_outreach() after manually sending',
+    ],
+  };
+}
+
+async function createGmailDraft(params: CreateGmailDraftParams): Promise<object> {
+  const userId = requireAuth();
+
+  // Log in v2_outreach
+  const { data: outreach, error } = await supabase
+    .from('v2_outreach')
+    .insert({
+      user_id: userId,
+      job_id: params.job_id || null,
+      contact_id: params.contact_id || null,
+      channel: 'email',
+      message_text: params.body,
+      subject_line: params.subject,
+      sent_at: null, // Not sent yet, just drafted
+    })
+    .select()
+    .single();
+
+  if (error) throw new Error(`Error creating outreach record: ${error.message}`);
+
+  // Update the job's outreach_draft if job_id provided
+  if (params.job_id) {
+    await supabase
+      .from('v2_jobs')
+      .update({ outreach_draft: params.body })
+      .eq('id', params.job_id)
+      .eq('user_id', userId);
+  }
+
+  return {
+    outreach_id: outreach.id,
+    status: 'draft_logged',
+    gmail_instructions: `Use Gmail MCP tools to create a draft email:
+- To: ${params.to}
+- Subject: ${params.subject}
+- Body: ${params.body}
+
+After creating the Gmail draft, call this tool again or update the outreach record with the gmail_draft_id.`,
+    draft_details: {
+      to: params.to,
+      subject: params.subject,
+      body: params.body,
+      job_id: params.job_id,
+      contact_id: params.contact_id,
+    },
+  };
+}
+
+async function checkEmailResponses(params: CheckEmailResponsesParams): Promise<object> {
+  const userId = requireAuth();
+  const daysBack = params.days_back || 14;
+
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - daysBack);
+
+  const { data: outreach, error } = await supabase
+    .from('v2_outreach')
+    .select(`
+      *,
+      v2_jobs (id, title, company),
+      v2_contacts (id, name, email, title, company)
+    `)
+    .eq('user_id', userId)
+    .eq('response_received', false)
+    .not('sent_at', 'is', null)
+    .gte('sent_at', cutoff.toISOString())
+    .order('sent_at', { ascending: false });
+
+  if (error) throw new Error(`Error checking responses: ${error.message}`);
+
+  const pending = (outreach || []).map((o: any) => {
+    const daysSince = Math.floor(
+      (Date.now() - new Date(o.sent_at).getTime()) / (1000 * 60 * 60 * 24)
+    );
+    return {
+      outreach_id: o.id,
+      contact_name: o.v2_contacts?.name,
+      contact_email: o.v2_contacts?.email,
+      company: o.v2_jobs?.company || o.v2_contacts?.company,
+      job_title: o.v2_jobs?.title,
+      channel: o.channel,
+      subject_line: o.subject_line,
+      sent_at: o.sent_at,
+      days_since_sent: daysSince,
+      gmail_message_id: o.gmail_message_id,
+      is_overdue: daysSince > (o.business_days_window || 3),
+    };
+  });
+
+  return {
+    pending_responses: pending,
+    total: pending.length,
+    overdue: pending.filter((p: any) => p.is_overdue).length,
+    instructions: `Check Gmail for replies to these ${pending.length} outreach messages. For each:
+1. Search Gmail for threads with these contacts
+2. If reply found: call mark_outreach_response() with the outcome
+3. If positive reply: outcome='positive' or outcome='interview_scheduled'
+4. If rejection: outcome='negative'
+5. If no reply and overdue: the follow-up system will handle it`,
+  };
+}
+
+async function bulkImportJobs(params: BulkImportJobsParams): Promise<object> {
+  const userId = requireAuth();
+
+  const results = {
+    imported: 0,
+    skipped: 0,
+    errors: [] as string[],
+    jobs: [] as any[],
+  };
+
+  for (const job of params.jobs) {
+    // Check for duplicates by URL
+    if (job.url) {
+      const { data: existing } = await supabase
+        .from('v2_jobs')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('url', job.url)
+        .limit(1);
+
+      if (existing && existing.length > 0) {
+        results.skipped++;
+        continue;
+      }
+    }
+
+    const { data, error } = await supabase
+      .from('v2_jobs')
+      .insert({
+        user_id: userId,
+        title: job.title,
+        company: job.company,
+        url: job.url,
+        salary_min: job.salary_min,
+        salary_max: job.salary_max,
+        location: job.location,
+        remote: job.remote || false,
+        fit_score: job.fit_score,
+        match_score: job.fit_score,
+        source: job.source || 'other',
+        notes: job.notes,
+        status: 'new',
+        posting_status: 'live',
+      })
+      .select()
+      .single();
+
+    if (error) {
+      results.errors.push(`${job.company} - ${job.title}: ${error.message}`);
+    } else if (data) {
+      results.imported++;
+      results.jobs.push({ id: data.id, title: data.title, company: data.company, fit_score: data.fit_score });
+
+      // Auto-score if no fit_score provided
+      if (!job.fit_score) {
+        try {
+          const score = await scoreJob({ ...job, job_id: data.id });
+          results.jobs[results.jobs.length - 1].fit_score = score.fit_score;
+        } catch (e) {
+          // Score failure is non-fatal
+        }
+      }
+    }
+  }
+
+  return {
+    summary: `Imported ${results.imported} jobs, skipped ${results.skipped} duplicates, ${results.errors.length} errors.`,
+    ...results,
+    next_steps: results.imported > 0
+      ? ['Review imported jobs with get_jobs()', 'Score unscored jobs with score_job()', 'Generate outreach for 70%+ matches']
+      : ['No new jobs imported. Try different search criteria.'],
+  };
+}
+
+// ============================================
 // Server Setup
 // ============================================
 
@@ -867,6 +1551,71 @@ export async function createMCPServer(): Promise<Server> {
             args?.followup_id as string,
             args?.days as number
           );
+          break;
+
+        case 'get_system_instructions':
+          result = await getSystemInstructions();
+          break;
+
+        case 'search_jobs':
+          result = await searchJobs({
+            keywords: args?.keywords as string[],
+            location: args?.location as string,
+            remote_only: args?.remote_only as boolean,
+            salary_min: args?.salary_min as number,
+            freshness_hours: args?.freshness_hours as number,
+          });
+          break;
+
+        case 'score_job':
+          result = await scoreJob({
+            job_id: args?.job_id as string,
+            title: args?.title as string,
+            company: args?.company as string,
+            salary_min: args?.salary_min as number,
+            salary_max: args?.salary_max as number,
+            location: args?.location as string,
+            remote: args?.remote as boolean,
+            description: args?.description as string,
+          });
+          break;
+
+        case 'verify_posting':
+          result = await verifyPosting({
+            job_id: args?.job_id as string,
+            url: args?.url as string,
+            status: args?.status as string,
+          });
+          break;
+
+        case 'generate_outreach':
+          result = await generateOutreach({
+            job_id: args?.job_id as string,
+            contact_id: args?.contact_id as string,
+            tone: args?.tone as 'professional' | 'warm' | 'direct',
+          });
+          break;
+
+        case 'create_gmail_draft':
+          result = await createGmailDraft({
+            to: args?.to as string,
+            subject: args?.subject as string,
+            body: args?.body as string,
+            job_id: args?.job_id as string,
+            contact_id: args?.contact_id as string,
+          });
+          break;
+
+        case 'check_email_responses':
+          result = await checkEmailResponses({
+            days_back: args?.days_back as number,
+          });
+          break;
+
+        case 'bulk_import_jobs':
+          result = await bulkImportJobs({
+            jobs: args?.jobs as BulkImportJobsParams['jobs'],
+          });
           break;
 
         default:

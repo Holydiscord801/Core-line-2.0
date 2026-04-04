@@ -25,10 +25,14 @@ export interface V2User {
   preferences: UserPreferences;
   created_at: string;
   updated_at: string;
+  autopilot_enabled: boolean;
+  review_window_hours: number;
 }
 
 export type JobStatus = 'new' | 'researching' | 'applied' | 'interviewing' | 'offer' | 'closed' | 'rejected';
 export type JobSource = 'linkedin' | 'indeed' | 'google' | 'glassdoor' | 'manual' | 'other';
+export type PostingStatus = 'live' | 'dead' | 'expired' | 'unknown';
+export type TimerType = 'application' | 'outreach_email' | 'outreach_linkedin' | 'linkedin_connection' | 'interview_thankyou' | 'general_followup';
 
 export interface V2Job {
   id: string;
@@ -49,6 +53,11 @@ export interface V2Job {
   applied_at: string | null;
   created_at: string;
   updated_at: string;
+  match_score: number | null;
+  resume_variant: string | null;
+  posting_status: 'live' | 'dead' | 'expired' | 'unknown';
+  posting_verified_at: string | null;
+  outreach_draft: string | null;
 }
 
 export type RelationshipType = 'hiring_manager' | 'reports_to' | 'peer' | 'recruiter' | 'mutual_connection' | 'warm_intro' | 'other';
@@ -66,6 +75,9 @@ export interface V2Contact {
   notes: string | null;
   created_at: string;
   updated_at: string;
+  warmth_score: number;
+  last_contacted_at: string | null;
+  response_count: number;
 }
 
 export interface V2JobContact {
@@ -92,6 +104,9 @@ export interface V2Outreach {
   response_at: string | null;
   outcome: OutreachOutcome | null;
   created_at: string;
+  gmail_draft_id: string | null;
+  gmail_message_id: string | null;
+  subject_line: string | null;
 }
 
 export interface BattlePlanData {
@@ -141,6 +156,8 @@ export interface V2Followup {
   snoozed_until: string | null;
   created_at: string;
   updated_at: string;
+  timer_type: TimerType | null;
+  business_days_window: number;
 }
 
 export interface V2ApiKey {
@@ -292,4 +309,79 @@ export interface SnoozeFollowupParams {
 
 export interface GetBattlePlanParams {
   date?: string;
+}
+
+export interface SearchJobsParams {
+  keywords: string[];
+  location?: string;
+  remote_only?: boolean;
+  salary_min?: number;
+  freshness_hours?: number;
+}
+
+export interface ScoreJobParams {
+  job_id?: string;
+  title: string;
+  company: string;
+  salary_min?: number;
+  salary_max?: number;
+  location?: string;
+  remote?: boolean;
+  description?: string;
+}
+
+export interface ScoreResult {
+  fit_score: number;
+  breakdown: {
+    title_match: number;
+    salary_range: number;
+    remote_preference: number;
+    company_stage: number;
+    industry_fit: number;
+    reporting_level: number;
+  };
+  recommendation: string;
+}
+
+export interface VerifyPostingParams {
+  job_id: string;
+  url?: string;
+}
+
+export interface GenerateOutreachParams {
+  job_id: string;
+  contact_id: string;
+  tone?: 'professional' | 'warm' | 'direct';
+}
+
+export interface CreateGmailDraftParams {
+  to: string;
+  subject: string;
+  body: string;
+  job_id?: string;
+  contact_id?: string;
+}
+
+export interface CheckEmailResponsesParams {
+  days_back?: number;
+}
+
+export interface BulkImportJobsParams {
+  jobs: Array<{
+    title: string;
+    company: string;
+    url: string;
+    salary_min?: number;
+    salary_max?: number;
+    location?: string;
+    remote?: boolean;
+    fit_score?: number;
+    source?: string;
+    notes?: string;
+  }>;
+}
+
+export interface AutopilotSettings {
+  autopilot_enabled: boolean;
+  review_window_hours: number;
 }
