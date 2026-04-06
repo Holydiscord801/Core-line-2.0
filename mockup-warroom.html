@@ -313,6 +313,12 @@ body::before{content:'';position:fixed;top:-200px;left:50%;transform:translateX(
 .outreach-name{font-weight:600;font-size:13px}
 .outreach-detail{font-size:12px;color:var(--dim);margin-top:2px}
 .outcome-badge{font-size:10px;font-weight:700;padding:3px 10px;border-radius:6px;text-transform:uppercase;letter-spacing:.5px;flex-shrink:0}
+.outreach-card{cursor:pointer}
+.outreach-card.outreach-expanded{border-color:rgba(99,102,241,.4);border-radius:12px 12px 0 0;background:rgba(99,102,241,.04)}
+.outreach-detail-panel{background:rgba(99,102,241,.02);border:1px solid rgba(99,102,241,.4);border-top:none;border-radius:0 0 12px 12px;padding:16px 20px}
+.followup-card{cursor:pointer}
+.followup-card.followup-expanded{border-color:rgba(99,102,241,.4)!important;border-radius:12px 12px 0 0;background:rgba(99,102,241,.04)}
+.followup-detail-panel{background:rgba(99,102,241,.02);border:1px solid rgba(99,102,241,.4);border-top:none;border-radius:0 0 12px 12px;padding:16px 20px}
 .outcome-no_response{color:var(--dim);background:rgba(255,255,255,.04);border:1px solid var(--border)}
 .outcome-positive{color:var(--green);background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.2)}
 .outcome-negative{color:var(--red);background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2)}
@@ -343,14 +349,21 @@ body::before{content:'';position:fixed;top:-200px;left:50%;transform:translateX(
 .data-table td{padding:12px 16px}
 
 /* Battle plan action items */
-.action-item{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 20px;display:flex;align-items:center;gap:16px;transition:all .2s}
+.action-item{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 20px;display:flex;align-items:center;gap:16px;transition:all .2s;cursor:pointer}
 .action-item:hover{border-color:var(--border-glow)}
 .action-item.done{opacity:.5}
+.action-item.action-expanded{border-color:rgba(99,102,241,.4);border-radius:12px 12px 0 0;background:rgba(99,102,241,.04)}
 .action-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
 .action-body{flex:1;min-width:0}
 .action-title{font-weight:600;font-size:13px}
 .action-sub{font-size:12px;color:var(--dim);margin-top:2px}
 .action-buttons{display:flex;gap:8px;flex-shrink:0}
+.action-detail{background:rgba(99,102,241,.02);border:1px solid rgba(99,102,241,.4);border-top:none;border-radius:0 0 12px 12px;padding:16px 20px;display:flex;flex-direction:column;gap:12px}
+.action-detail .card-detail-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.action-detail .card-detail-section{background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:10px;padding:14px}
+.action-detail .card-detail-section h4{font-size:12px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px}
+.action-detail .detail-actions{display:flex;gap:8px;flex-wrap:wrap}
+@media(max-width:768px){.action-detail .card-detail-row{grid-template-columns:1fr}}
 
 /* AI briefing card */
 .briefing-card{background:linear-gradient(135deg,rgba(99,102,241,.12),rgba(139,92,246,.08));border:1px solid rgba(99,102,241,.3);border-radius:16px;padding:24px;margin-bottom:24px}
@@ -1167,21 +1180,14 @@ let currentView = 'warroom';
 let authMode = 'signin';
 let cachedJobs = [];
 let cachedContacts = [];
-
-function deduplicateByName(contacts) {
-  const seen = new Map();
-  for (const c of contacts) {
-    const key = (c.name || '').toLowerCase().replace(/\s+/g, ' ').trim() + '||' + (c.company || '').toLowerCase().trim();
-    if (!seen.has(key)) seen.set(key, c);
-  }
-  return [...seen.values()];
-}
-
 let cachedSummary = null;
 let cachedFollowups = [];
 let cachedOutreach = [];
 let cachedBattlePlan = null;
 let expandedCardId = null;
+let expandedActionItemId = null;
+let expandedOutreachId = null;
+let expandedFollowupId = null;
 let generatedApiKey = null;
 
 // ============================================
@@ -1453,7 +1459,7 @@ async function loadAllData() {
       api('/summary'),
     ]);
     cachedJobs = jobsRes?.jobs || [];
-    cachedContacts = deduplicateByName(contactsRes?.contacts || []);
+    cachedContacts = deduplicateContacts(contactsRes?.contacts || []);
     cachedSummary = summaryRes || null;
 
     updateSideBadges();
@@ -1463,6 +1469,55 @@ async function loadAllData() {
       showToast('Failed to load data: ' + err.message, 'error');
     }
   }
+}
+
+// Normalize a contact name for dedup: lowercase, collapse whitespace, strip accents
+function normalizeContactName(name) {
+  return (name || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+// Deduplicate contacts array: by ID first, then by normalized name+company
+function deduplicateContacts(contacts) {
+  const byId = new Map();
+  contacts.forEach(c => {
+    if (!byId.has(c.id)) byId.set(c.id, c);
+  });
+  const byNameCompany = new Map();
+  for (const c of byId.values()) {
+    const key = normalizeContactName(c.name) + '||' + normalizeContactName(c.company);
+    if (!byNameCompany.has(key)) {
+      byNameCompany.set(key, c);
+    } else {
+      // Merge linked_job_ids from duplicate records
+      const existing = byNameCompany.get(key);
+      if (c.linked_job_ids && c.linked_job_ids.length > 0) {
+        existing.linked_job_ids = [...new Set([...(existing.linked_job_ids || []), ...c.linked_job_ids])];
+      }
+    }
+  }
+  return Array.from(byNameCompany.values());
+}
+
+// Get contacts for a job: explicit v2_job_contacts links first, then company-name fallback, deduplicated
+function getJobContacts(job) {
+  const linked = cachedContacts.filter(c =>
+    c.linked_job_ids && c.linked_job_ids.includes(job.id)
+  );
+  const companyMatch = cachedContacts.filter(c =>
+    c.company && job.company &&
+    c.company.toLowerCase() === job.company.toLowerCase()
+  );
+  const merged = [...linked, ...companyMatch];
+  const seenIds = new Set();
+  const seenNames = new Set();
+  return merged.filter(c => {
+    if (seenIds.has(c.id)) return false;
+    const nameKey = normalizeContactName(c.name);
+    if (seenNames.has(nameKey)) return false;
+    seenIds.add(c.id);
+    seenNames.add(nameKey);
+    return true;
+  });
 }
 
 function updateSideBadges() {
@@ -1662,7 +1717,7 @@ function renderCardDetail(job) {
   html += `</div></div>`;
 
   // Contacts for this job
-  const jobContacts = deduplicateByName(cachedContacts.filter(c => c.company && job.company && c.company.toLowerCase() === job.company.toLowerCase()));
+  const jobContacts = getJobContacts(job);
   html += `<div class="card-detail-section">`;
   html += `<h4>Linked Contacts (${jobContacts.length})</h4>`;
   if (jobContacts.length > 0) {
@@ -1828,6 +1883,144 @@ async function renderWarRoomFollowupAlert() {
         </div>`;
     }).join('');
   }
+}
+
+// ============================================
+// BATTLE PLAN: INTERACTIVE ITEM EXPANSION
+// ============================================
+
+function toggleActionItem(itemId) {
+  expandedActionItemId = expandedActionItemId === itemId ? null : itemId;
+  renderBattlePlan();
+}
+
+function renderBPItemDetail(item) {
+  if (item.type === 'job' && item.jobId) {
+    const job = cachedJobs.find(j => j.id === item.jobId);
+    if (!job) return '';
+    const score = job.match_score || job.fit_score || 0;
+    const scoreColor = score >= 80 ? 'var(--green)' : score >= 60 ? 'var(--yellow)' : 'var(--dim)';
+    const salary = formatSalary(job);
+    const jobContacts = getJobContacts(job);
+
+    let html = `<div class="action-detail">`;
+    html += `<div class="card-detail-row">`;
+
+    // Job details
+    html += `<div class="card-detail-section">`;
+    html += `<h4>Details</h4>`;
+    html += `<div style="font-size:12px;line-height:1.8;color:var(--dim)">`;
+    html += `<div><strong style="color:var(--text)">Status:</strong> ${formatStatus(job.status)}</div>`;
+    if (score > 0) html += `<div><strong style="color:var(--text)">Match Score:</strong> <span style="color:${scoreColor};font-weight:700">${score}/100</span></div>`;
+    if (salary) html += `<div><strong style="color:var(--text)">Salary:</strong> <span style="color:var(--green)">${salary}</span></div>`;
+    if (job.location) html += `<div><strong style="color:var(--text)">Location:</strong> ${esc(job.location)}${job.remote ? ' (Remote)' : ''}</div>`;
+    if (job.source) html += `<div><strong style="color:var(--text)">Source:</strong> ${esc(job.source)}</div>`;
+    if (job.resume_variant || job.resume_version) html += `<div><strong style="color:var(--text)">Resume:</strong> ${esc(job.resume_variant || job.resume_version)}</div>`;
+    if (job.posting_status) html += `<div><strong style="color:var(--text)">Posting:</strong> <span style="color:${job.posting_status === 'dead' ? 'var(--red)' : 'var(--green)'}">${esc(job.posting_status)}</span></div>`;
+    if (job.applied_at) html += `<div><strong style="color:var(--text)">Applied:</strong> ${formatDate(job.applied_at)}</div>`;
+    if (job.url) html += `<div><a href="${esc(job.url)}" target="_blank" style="color:var(--accent);text-decoration:none" onclick="event.stopPropagation()">View posting &#8599;</a></div>`;
+    if (job.notes) html += `<div style="margin-top:8px;font-style:italic">${esc(job.notes)}</div>`;
+    html += `</div></div>`;
+
+    // Contacts + outreach
+    html += `<div class="card-detail-section">`;
+    html += `<h4>Linked Contacts (${jobContacts.length})</h4>`;
+    if (jobContacts.length > 0) {
+      html += jobContacts.map(c => `<div style="font-size:12px;margin-bottom:6px"><strong style="color:var(--text)">${esc(c.name)}</strong> <span style="color:var(--dim)">${esc(c.title || '')}</span>${c.relationship_type ? ` <span class="relationship-badge rel-${c.relationship_type}" style="font-size:8px">${c.relationship_type.replace(/_/g, ' ')}</span>` : ''}${c.linkedin_url ? ` <a href="${esc(c.linkedin_url)}" target="_blank" style="color:var(--accent);font-size:11px" onclick="event.stopPropagation()">LinkedIn</a>` : ''}</div>`).join('');
+    } else {
+      html += `<div style="font-size:12px;color:var(--dim)">No contacts linked yet.</div>`;
+    }
+    if (job.outreach_draft) {
+      html += `<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">`;
+      html += `<h4 style="font-size:11px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Outreach Draft</h4>`;
+      html += `<div style="font-size:12px;color:var(--dim);font-style:italic;max-height:60px;overflow:hidden">"${esc(job.outreach_draft).substring(0, 150)}${job.outreach_draft.length > 150 ? '...' : ''}"</div>`;
+      html += `<button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="event.stopPropagation();showDraftByKey('${cacheDraft(job.outreach_draft)}')">View Full Draft</button>`;
+      html += `</div>`;
+    }
+    html += `</div>`;
+    html += `</div>`; // end row
+
+    // Action buttons
+    html += `<div class="detail-actions">`;
+    if (job.url) html += `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();applyToJob('${job.id}','${esc(job.url)}')">Apply Now</button>`;
+    if (job.status === 'new' || job.status === 'researching') html += `<button class="btn btn-success btn-sm" onclick="event.stopPropagation();updateJobStatus('${job.id}','applied')">Mark Applied</button>`;
+    if (job.status === 'applied') html += `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();updateJobStatus('${job.id}','interviewing')">Move to Interviewing</button>`;
+    if (job.status === 'interviewing') html += `<button class="btn btn-success btn-sm" onclick="event.stopPropagation();updateJobStatus('${job.id}','offer')">Mark Offer</button>`;
+    html += `<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();navigateTo('pipeline')">View in Pipeline</button>`;
+    html += `</div>`;
+    html += `</div>`;
+    return html;
+  }
+
+  if (item.type === 'followup') {
+    const followup = cachedFollowupsBP.find(f => f.id === item.followupId);
+    if (!followup) return '';
+    const contact = followup.v2_contacts || {};
+    const job = followup.v2_jobs || cachedJobs.find(j => j.id === followup.job_id) || {};
+
+    let html = `<div class="action-detail">`;
+    html += `<div class="card-detail-row">`;
+
+    // Contact info
+    html += `<div class="card-detail-section">`;
+    html += `<h4>Contact</h4>`;
+    html += `<div style="font-size:12px;line-height:1.8;color:var(--dim)">`;
+    if (contact.name) html += `<div><strong style="color:var(--text)">${esc(contact.name)}</strong></div>`;
+    if (contact.title) html += `<div>${esc(contact.title)}</div>`;
+    if (contact.company) html += `<div>${esc(contact.company)}</div>`;
+    if (contact.email) html += `<div><a href="mailto:${esc(contact.email)}" style="color:var(--accent)" onclick="event.stopPropagation()">${esc(contact.email)}</a></div>`;
+    if (contact.linkedin_url) html += `<div><a href="${esc(contact.linkedin_url)}" target="_blank" style="color:var(--accent)" onclick="event.stopPropagation()">LinkedIn &#8599;</a></div>`;
+    if (contact.phone) html += `<div>${esc(contact.phone)}</div>`;
+    html += `</div></div>`;
+
+    // Job context
+    html += `<div class="card-detail-section">`;
+    html += `<h4>Related Job</h4>`;
+    html += `<div style="font-size:12px;line-height:1.8;color:var(--dim)">`;
+    if (job.company || job.title) html += `<div><strong style="color:var(--text)">${esc(job.company || '')}</strong>${job.title ? ' - ' + esc(job.title) : ''}</div>`;
+    if (job.status) html += `<div><strong style="color:var(--text)">Status:</strong> ${formatStatus(job.status)}</div>`;
+    const jobScore = job.match_score || job.fit_score || 0;
+    if (jobScore > 0) html += `<div><strong style="color:var(--text)">Match:</strong> ${jobScore}%</div>`;
+    html += `</div></div>`;
+
+    html += `</div>`; // end row
+
+    if (followup.notes) {
+      html += `<div style="font-size:12px;color:var(--dim);font-style:italic;padding:8px 0">${esc(followup.notes)}</div>`;
+    }
+
+    html += `<div class="detail-actions">`;
+    html += `<button class="btn btn-success btn-sm" onclick="event.stopPropagation();markBPFollowupDone('${item.followupId}')">Mark Done</button>`;
+    if (contact.email) html += `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();window.open('mailto:${esc(contact.email)}','_blank')">Send Email</button>`;
+    if (contact.linkedin_url) html += `<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();window.open('${esc(contact.linkedin_url)}','_blank')">Open LinkedIn</button>`;
+    if (followup.job_id) html += `<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();navigateTo('pipeline')">View Job</button>`;
+    html += `</div>`;
+    html += `</div>`;
+    return html;
+  }
+
+  // planAction / contactAction - show what info we have
+  if (item.type === 'contactAction') {
+    let html = `<div class="action-detail">`;
+    html += `<div style="font-size:12px;color:var(--dim);line-height:1.6">`;
+    if (item.company) html += `<div><strong style="color:var(--text)">Company:</strong> ${esc(item.company)}</div>`;
+    if (item.contactName) {
+      const contact = cachedContacts.find(c => c.name && c.name.toLowerCase() === item.contactName.toLowerCase());
+      if (contact) {
+        if (contact.title) html += `<div><strong style="color:var(--text)">Title:</strong> ${esc(contact.title)}</div>`;
+        if (contact.email) html += `<div><a href="mailto:${esc(contact.email)}" style="color:var(--accent)" onclick="event.stopPropagation()">${esc(contact.email)}</a></div>`;
+        if (contact.linkedin_url) html += `<div><a href="${esc(contact.linkedin_url)}" target="_blank" style="color:var(--accent)" onclick="event.stopPropagation()">LinkedIn &#8599;</a></div>`;
+      }
+    }
+    html += `</div>`;
+    html += `<div class="detail-actions" style="margin-top:8px">`;
+    html += `<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();navigateTo('network')">View in Network</button>`;
+    html += `</div>`;
+    html += `</div>`;
+    return html;
+  }
+
+  return '';
 }
 
 // ============================================
@@ -2085,7 +2278,7 @@ function renderBattlePlan() {
   highMatchJobs.forEach(job => {
     const score = job.match_score || job.fit_score || 0;
     const daysSince = job.updated_at ? Math.round((new Date() - new Date(job.updated_at)) / 86400000) : 0;
-    const linkedContacts = deduplicateByName(cachedContacts.filter(c => c.company && job.company && c.company.toLowerCase() === job.company.toLowerCase()));
+    const linkedContacts = getJobContacts(job);
     actionQueue.push({
       priority: 2,
       dotColor: 'var(--cyan)',
@@ -2112,7 +2305,7 @@ function renderBattlePlan() {
   staleJobs.forEach(job => {
     const daysSince = job.updated_at ? Math.round((new Date() - new Date(job.updated_at)) / 86400000) : 0;
     const score = job.match_score || job.fit_score || 0;
-    const linkedContacts = deduplicateByName(cachedContacts.filter(c => c.company && job.company && c.company.toLowerCase() === job.company.toLowerCase()));
+    const linkedContacts = getJobContacts(job);
     actionQueue.push({
       priority: 3,
       dotColor: job.status === 'interviewing' ? 'var(--yellow)' : 'var(--accent)',
@@ -2218,7 +2411,12 @@ function renderBattlePlan() {
     return;
   }
 
-  queueEl.innerHTML = actionQueue.map(item => {
+  queueEl.innerHTML = actionQueue.map((item, idx) => {
+    const itemId = item.jobId ? `bp-${item.type}-${item.jobId}`
+                 : item.followupId ? `bp-${item.type}-${item.followupId}`
+                 : `bp-${item.type}-${idx}`;
+    const isExpanded = expandedActionItemId === itemId;
+
     // Match score badge
     let scoreBadge = '';
     if (item.matchScore !== null && item.matchScore > 0) {
@@ -2239,43 +2437,53 @@ function renderBattlePlan() {
       daysTag = `<span style="font-size:10px;color:var(--dim);margin-left:8px">${item.daysInactive}d ago</span>`;
     }
 
+    // Expand/collapse chevron
+    const chevron = (item.type === 'job' || item.type === 'followup' || item.type === 'contactAction')
+      ? `<span style="font-size:10px;color:var(--dim);margin-left:6px;transition:transform .2s;display:inline-block;${isExpanded ? 'transform:rotate(90deg)' : ''}">${isExpanded ? '&#9662;' : '&#9656;'}</span>`
+      : '';
+
     // Action buttons
     let buttons = '';
     if (item.type === 'followup') {
       buttons = `
-        <button class="btn btn-success btn-sm" onclick="markBPFollowupDone('${item.followupId}')">Mark Done</button>
+        <button class="btn btn-success btn-sm" onclick="event.stopPropagation();markBPFollowupDone('${item.followupId}')">Mark Done</button>
         <div style="position:relative">
-          <button class="btn btn-ghost btn-sm" onclick="toggleBPSnooze(event, '${item.followupId}')">Snooze</button>
+          <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();toggleBPSnooze(event, '${item.followupId}')">Snooze</button>
           <div class="snooze-dropdown" id="bp-snooze-${item.followupId}">
-            <div class="snooze-option" onclick="snoozeBPFollowup('${item.followupId}', 1)">1 day</div>
-            <div class="snooze-option" onclick="snoozeBPFollowup('${item.followupId}', 3)">3 days</div>
-            <div class="snooze-option" onclick="snoozeBPFollowup('${item.followupId}', 7)">7 days</div>
+            <div class="snooze-option" onclick="event.stopPropagation();snoozeBPFollowup('${item.followupId}', 1)">1 day</div>
+            <div class="snooze-option" onclick="event.stopPropagation();snoozeBPFollowup('${item.followupId}', 3)">3 days</div>
+            <div class="snooze-option" onclick="event.stopPropagation();snoozeBPFollowup('${item.followupId}', 7)">7 days</div>
           </div>
         </div>`;
     } else if (item.type === 'job') {
       if (item.url) {
-        buttons += `<button class="btn btn-primary btn-sm" onclick="applyToJob('${item.jobId}', '${esc(item.url)}')">Apply Now</button>`;
+        buttons += `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();applyToJob('${item.jobId}', '${esc(item.url)}')">Apply Now</button>`;
       }
       if (item.jobId) {
-        buttons += `<button class="btn btn-success btn-sm" onclick="updateJobStatus('${item.jobId}','applied')">Mark Done</button>`;
+        buttons += `<button class="btn btn-success btn-sm" onclick="event.stopPropagation();updateJobStatus('${item.jobId}','applied')">Mark Done</button>`;
       }
       if (item.draft) {
         const draftKey = cacheDraft(item.draft);
-        buttons += `<button class="btn btn-ghost btn-sm" onclick="showDraftByKey('${draftKey}')">View Draft</button>`;
+        buttons += `<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();showDraftByKey('${draftKey}')">View Draft</button>`;
       }
     } else if (item.type === 'contactAction') {
-      buttons += `<button class="btn btn-ghost btn-sm" onclick="window.open('https://www.linkedin.com','_blank')">LinkedIn</button>`;
-      buttons += `<button class="btn btn-ghost btn-sm" onclick="window.open('https://mail.google.com','_blank')">Gmail</button>`;
+      buttons += `<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();window.open('https://www.linkedin.com','_blank')">LinkedIn</button>`;
+      buttons += `<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();window.open('https://mail.google.com','_blank')">Gmail</button>`;
     }
 
+    const detail = isExpanded ? renderBPItemDetail(item) : '';
+
     return `
-      <div class="action-item">
-        <div class="action-dot" style="background:${item.dotColor}"></div>
-        <div class="action-body">
-          <div class="action-title">${item.title}${scoreBadge}${contactTag}</div>
-          <div class="action-sub">${esc(item.description)}${daysTag}</div>
+      <div>
+        <div class="action-item${isExpanded ? ' action-expanded' : ''}" onclick="toggleActionItem('${itemId}')">
+          <div class="action-dot" style="background:${item.dotColor}"></div>
+          <div class="action-body">
+            <div class="action-title">${item.title}${scoreBadge}${contactTag}${chevron}</div>
+            <div class="action-sub">${esc(item.description)}${daysTag}</div>
+          </div>
+          <div class="action-buttons" style="position:relative" onclick="event.stopPropagation()">${buttons}</div>
         </div>
-        <div class="action-buttons" style="position:relative">${buttons}</div>
+        ${detail}
       </div>`;
   }).join('');
 }
@@ -2365,7 +2573,7 @@ function renderPipeline() {
       </tr>`;
 
     if (isExpanded) {
-      const jobContacts = deduplicateByName(cachedContacts.filter(c => c.company && job.company && c.company.toLowerCase() === job.company.toLowerCase()));
+      const jobContacts = getJobContacts(job);
       row += `
         <tr style="background:rgba(99,102,241,.02)">
           <td colspan="7" style="padding:0">
@@ -2565,7 +2773,9 @@ function renderOutreach() {
   const outreachHtml = cachedOutreach.map(o => {
     const icon = channelIcons[o.channel] || '&#9993;&#65039;';
     const contactName = o.v2_contacts?.name || 'Unknown';
-    const company = o.v2_contacts?.company || o.v2_jobs?.company || '';
+    const contact = o.v2_contacts || {};
+    const company = contact.company || o.v2_jobs?.company || '';
+    const job = o.v2_jobs || (o.job_id ? cachedJobs.find(j => j.id === o.job_id) : null) || {};
     const outcome = o.outcome || 'no_response';
     const oColor = outcomeColors[outcome] || 'var(--dim)';
     const oLabel = outcomeLabels[outcome] || outcome;
@@ -2573,20 +2783,63 @@ function renderOutreach() {
     const isDraft = !o.sent_at;
     const isResponded = o.response_received;
     const filterClass = isDraft ? 'draft' : isResponded ? 'responded' : 'sent';
+    const isExpanded = expandedOutreachId === o.id;
+
+    let detail = '';
+    if (isExpanded) {
+      detail = `<div class="outreach-detail-panel">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div class="card-detail-section">
+            <h4>Contact</h4>
+            <div style="font-size:12px;line-height:1.8;color:var(--dim)">
+              ${contact.name ? `<div><strong style="color:var(--text)">${esc(contact.name)}</strong></div>` : ''}
+              ${contact.title ? `<div>${esc(contact.title)}</div>` : ''}
+              ${company ? `<div>${esc(company)}</div>` : ''}
+              ${contact.email ? `<div><a href="mailto:${esc(contact.email)}" style="color:var(--accent)" onclick="event.stopPropagation()">${esc(contact.email)}</a></div>` : ''}
+              ${contact.linkedin_url ? `<div><a href="${esc(contact.linkedin_url)}" target="_blank" style="color:var(--accent)" onclick="event.stopPropagation()">LinkedIn &#8599;</a></div>` : ''}
+              ${contact.phone ? `<div>${esc(contact.phone)}</div>` : ''}
+            </div>
+          </div>
+          <div class="card-detail-section">
+            <h4>Job Context</h4>
+            <div style="font-size:12px;line-height:1.8;color:var(--dim)">
+              ${job.company || job.title ? `<div><strong style="color:var(--text)">${esc(job.company || '')}</strong>${job.title ? ' - ' + esc(job.title) : ''}</div>` : '<div>No linked job</div>'}
+              ${job.status ? `<div>Status: ${formatStatus(job.status)}</div>` : ''}
+              ${(job.match_score || job.fit_score) ? `<div>Match: ${job.match_score || job.fit_score}%</div>` : ''}
+            </div>
+          </div>
+        </div>
+        ${o.message_text ? `<div style="margin-top:12px"><div style="font-size:11px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Full Message</div><div style="font-size:12px;color:var(--dim);line-height:1.6;white-space:pre-wrap;background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:8px;padding:12px;max-height:200px;overflow-y:auto">${esc(o.message_text)}</div></div>` : ''}
+        ${o.subject_line ? `<div style="margin-top:8px;font-size:12px"><strong style="color:var(--text)">Subject:</strong> <span style="color:var(--dim)">${esc(o.subject_line)}</span></div>` : ''}
+        <div style="display:flex;gap:8px;margin-top:12px">
+          ${contact.email ? `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();window.open('mailto:${esc(contact.email)}','_blank')">Send Email</button>` : ''}
+          ${contact.linkedin_url ? `<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();window.open('${esc(contact.linkedin_url)}','_blank')">Open LinkedIn</button>` : ''}
+          ${job.id ? `<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();navigateTo('pipeline')">View Job</button>` : ''}
+        </div>
+      </div>`;
+    }
 
     return `
-      <div class="outreach-card" data-filter="${filterClass}">
-        <div class="outreach-channel ${o.channel}">${icon}</div>
-        <div class="outreach-body" style="flex:1">
-          <div class="outreach-name">${esc(contactName)}${company ? ` - ${esc(company)}` : ''}</div>
-          <div class="outreach-detail">${esc(o.channel || '')} - ${sentDate}${o.subject_line ? ' - ' + esc(o.subject_line) : ''}</div>
-          ${o.message_text ? `<div style="font-size:12px;color:var(--dim);margin-top:4px;font-style:italic;max-width:500px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">"${esc(o.message_text.substring(0, 120))}"</div>` : ''}
+      <div data-filter="${filterClass}">
+        <div class="outreach-card${isExpanded ? ' outreach-expanded' : ''}" data-filter="${filterClass}" onclick="toggleOutreachExpand('${o.id}')">
+          <div class="outreach-channel ${o.channel}">${icon}</div>
+          <div class="outreach-body" style="flex:1">
+            <div class="outreach-name">${esc(contactName)}${company ? ` - ${esc(company)}` : ''}</div>
+            <div class="outreach-detail">${esc(o.channel || '')} - ${sentDate}${o.subject_line ? ' - ' + esc(o.subject_line) : ''}</div>
+            ${!isExpanded && o.message_text ? `<div style="font-size:12px;color:var(--dim);margin-top:4px;font-style:italic;max-width:500px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">"${esc(o.message_text.substring(0, 120))}"</div>` : ''}
+          </div>
+          <span class="outcome-badge" style="color:${oColor};border-color:${oColor};background:${oColor}11">${oLabel}</span>
         </div>
-        <span class="outcome-badge" style="color:${oColor};border-color:${oColor};background:${oColor}11">${oLabel}</span>
+        ${detail}
       </div>`;
   }).join('');
 
   list.innerHTML = filterHtml + outreachHtml;
+}
+
+function toggleOutreachExpand(outreachId) {
+  expandedOutreachId = expandedOutreachId === outreachId ? null : outreachId;
+  renderOutreach();
 }
 
 function filterOutreach(filter, btn) {
@@ -2594,12 +2847,12 @@ function filterOutreach(filter, btn) {
   document.querySelectorAll('.outreach-filter').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
 
-  // Show/hide cards
-  document.querySelectorAll('.outreach-card[data-filter]').forEach(card => {
+  // Show/hide cards - check both wrapper divs and direct outreach-cards
+  document.querySelectorAll('#outreachList > div[data-filter], #outreachList > .outreach-card[data-filter]').forEach(el => {
     if (filter === 'all') {
-      card.style.display = '';
+      el.style.display = '';
     } else {
-      card.style.display = card.dataset.filter === filter ? '' : 'none';
+      el.style.display = el.dataset.filter === filter ? '' : 'none';
     }
   });
 }
@@ -2654,38 +2907,79 @@ function renderFollowups() {
         <div style="font-size:12px;font-weight:700;letter-spacing:1px;color:${borderColor};text-transform:uppercase;margin-bottom:10px;padding-left:4px">${title} (${items.length})</div>
         ${items.map(f => {
           const contactName = f.v2_contacts?.name || 'Unknown';
-          const company = f.v2_jobs?.company || f.v2_contacts?.company || '';
+          const contact = f.v2_contacts || {};
+          const company = f.v2_jobs?.company || contact.company || '';
+          const job = f.v2_jobs || (f.job_id ? cachedJobs.find(j => j.id === f.job_id) : null) || {};
           const timerLabel = timerLabels[f.timer_type] || 'Follow-up';
           const daysOverdue = Math.floor((new Date().getTime() - new Date(f.due_date).getTime()) / (1000 * 60 * 60 * 24));
           const dueLabel = f.due_date < today ? `${daysOverdue} day${daysOverdue !== 1 ? 's' : ''} overdue` : f.due_date === today ? 'Due today' : `Due ${formatDate(f.due_date)}`;
           const daysSinceContact = f.days_since_last_contact != null ? `Last contact: ${f.days_since_last_contact} day${f.days_since_last_contact !== 1 ? 's' : ''} ago` : '';
+          const isExpanded = expandedFollowupId === f.id;
 
-          return `
-            <div class="followup-card" style="border-left:3px solid ${borderColor}">
-              <div class="followup-dot" style="background:${dotColor}"></div>
-              <div class="followup-body" style="flex:1">
-                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                  <div class="followup-title">${esc(contactName)}</div>
-                  ${company ? `<span style="font-size:12px;color:var(--accent)">${esc(company)}</span>` : ''}
+          let detail = '';
+          if (isExpanded) {
+            detail = `<div class="followup-detail-panel">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+                <div class="card-detail-section">
+                  <h4>Contact</h4>
+                  <div style="font-size:12px;line-height:1.8;color:var(--dim)">
+                    ${contact.name ? `<div><strong style="color:var(--text)">${esc(contact.name)}</strong></div>` : ''}
+                    ${contact.title ? `<div>${esc(contact.title)}</div>` : ''}
+                    ${company ? `<div>${esc(company)}</div>` : ''}
+                    ${contact.email ? `<div><a href="mailto:${esc(contact.email)}" style="color:var(--accent)" onclick="event.stopPropagation()">${esc(contact.email)}</a></div>` : ''}
+                    ${contact.linkedin_url ? `<div><a href="${esc(contact.linkedin_url)}" target="_blank" style="color:var(--accent)" onclick="event.stopPropagation()">LinkedIn &#8599;</a></div>` : ''}
+                    ${contact.phone ? `<div>${esc(contact.phone)}</div>` : ''}
+                  </div>
                 </div>
-                <div class="followup-sub">
-                  <span style="color:${dotColor};font-weight:600">${dueLabel}</span>
-                  · ${esc(timerLabel)}
-                  ${daysSinceContact ? ` · ${daysSinceContact}` : ''}
-                </div>
-                ${f.reason ? `<div style="font-size:11px;color:var(--dim);margin-top:2px">${esc(f.reason)}</div>` : ''}
-              </div>
-              <div class="followup-actions">
-                <button class="btn btn-success btn-sm" onclick="markFollowupDone('${f.id}')">Mark Done</button>
-                <div style="position:relative">
-                  <button class="btn btn-ghost btn-sm snooze-trigger" onclick="toggleSnooze(event, '${f.id}')">Snooze</button>
-                  <div class="snooze-dropdown" id="snooze-${f.id}">
-                    <div class="snooze-option" onclick="snoozeFollowup('${f.id}', 1)">1 day</div>
-                    <div class="snooze-option" onclick="snoozeFollowup('${f.id}', 3)">3 days</div>
-                    <div class="snooze-option" onclick="snoozeFollowup('${f.id}', 7)">7 days</div>
+                <div class="card-detail-section">
+                  <h4>Related Job</h4>
+                  <div style="font-size:12px;line-height:1.8;color:var(--dim)">
+                    ${job.company || job.title ? `<div><strong style="color:var(--text)">${esc(job.company || '')}</strong>${job.title ? ' - ' + esc(job.title) : ''}</div>` : '<div>No linked job</div>'}
+                    ${job.status ? `<div>Status: ${formatStatus(job.status)}</div>` : ''}
+                    ${(job.match_score || job.fit_score) ? `<div>Match: ${job.match_score || job.fit_score}%</div>` : ''}
+                    ${job.applied_at ? `<div>Applied: ${formatDate(job.applied_at)}</div>` : ''}
                   </div>
                 </div>
               </div>
+              ${f.notes ? `<div style="margin-top:12px;font-size:12px;color:var(--dim);font-style:italic">${esc(f.notes)}</div>` : ''}
+              <div style="display:flex;gap:8px;margin-top:12px">
+                <button class="btn btn-success btn-sm" onclick="event.stopPropagation();markFollowupDone('${f.id}')">Mark Done</button>
+                ${contact.email ? `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();window.open('mailto:${esc(contact.email)}','_blank')">Send Email</button>` : ''}
+                ${contact.linkedin_url ? `<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();window.open('${esc(contact.linkedin_url)}','_blank')">Open LinkedIn</button>` : ''}
+                ${job.id ? `<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();navigateTo('pipeline')">View Job</button>` : ''}
+              </div>
+            </div>`;
+          }
+
+          return `
+            <div>
+              <div class="followup-card${isExpanded ? ' followup-expanded' : ''}" style="border-left:3px solid ${borderColor}" onclick="toggleFollowupExpand('${f.id}')">
+                <div class="followup-dot" style="background:${dotColor}"></div>
+                <div class="followup-body" style="flex:1">
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                    <div class="followup-title">${esc(contactName)}</div>
+                    ${company ? `<span style="font-size:12px;color:var(--accent)">${esc(company)}</span>` : ''}
+                  </div>
+                  <div class="followup-sub">
+                    <span style="color:${dotColor};font-weight:600">${dueLabel}</span>
+                    · ${esc(timerLabel)}
+                    ${daysSinceContact ? ` · ${daysSinceContact}` : ''}
+                  </div>
+                  ${f.reason ? `<div style="font-size:11px;color:var(--dim);margin-top:2px">${esc(f.reason)}</div>` : ''}
+                </div>
+                <div class="followup-actions" onclick="event.stopPropagation()">
+                  <button class="btn btn-success btn-sm" onclick="markFollowupDone('${f.id}')">Mark Done</button>
+                  <div style="position:relative">
+                    <button class="btn btn-ghost btn-sm snooze-trigger" onclick="toggleSnooze(event, '${f.id}')">Snooze</button>
+                    <div class="snooze-dropdown" id="snooze-${f.id}">
+                      <div class="snooze-option" onclick="snoozeFollowup('${f.id}', 1)">1 day</div>
+                      <div class="snooze-option" onclick="snoozeFollowup('${f.id}', 3)">3 days</div>
+                      <div class="snooze-option" onclick="snoozeFollowup('${f.id}', 7)">7 days</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              ${detail}
             </div>`;
         }).join('')}
       </div>`;
@@ -2695,6 +2989,11 @@ function renderFollowups() {
     renderGroup('Overdue', overdue, 'var(--red)', 'var(--red)') +
     renderGroup('Due Today', dueToday, 'var(--yellow)', 'var(--yellow)') +
     renderGroup('Upcoming', upcoming, 'var(--cyan)', 'var(--cyan)');
+}
+
+function toggleFollowupExpand(followupId) {
+  expandedFollowupId = expandedFollowupId === followupId ? null : followupId;
+  renderFollowups();
 }
 
 function toggleSnooze(event, followupId) {
@@ -3352,7 +3651,7 @@ setInterval(async () => {
           api('/summary'),
         ]);
         cachedJobs = jobsRes?.jobs || [];
-        cachedContacts = deduplicateByName(contactsRes?.contacts || []);
+        cachedContacts = contactsRes?.contacts || [];
         cachedSummary = summaryRes || null;
         updateSideBadges();
         await refreshCurrentView();
