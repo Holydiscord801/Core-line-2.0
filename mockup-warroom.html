@@ -1154,7 +1154,7 @@ body::before{content:'';position:fixed;top:-200px;left:50%;transform:translateX(
 // ============================================
 
 const SUPABASE_URL = 'https://hazsxuznwftwagpbuhre.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhenN4dXpud2Z0d2FncGJ1aHJlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg0NTE1MzUsImV4cCI6MjA4NDAyNzUzNX0.rU3Mv-s5t3Qqx7C5YMliNX3aLJXxZJVXJhrdJJLGdv4';
+const SUPABASE_ANON_KEY = 'sb_publishable_QA3buJhe0eQpnZwhYM1Kig_SZaFCxha';
 const API_BASE = 'http://localhost:3001/api';
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -1167,6 +1167,16 @@ let currentView = 'warroom';
 let authMode = 'signin';
 let cachedJobs = [];
 let cachedContacts = [];
+
+function deduplicateByName(contacts) {
+  const seen = new Map();
+  for (const c of contacts) {
+    const key = (c.name || '').toLowerCase().replace(/\s+/g, ' ').trim() + '||' + (c.company || '').toLowerCase().trim();
+    if (!seen.has(key)) seen.set(key, c);
+  }
+  return [...seen.values()];
+}
+
 let cachedSummary = null;
 let cachedFollowups = [];
 let cachedOutreach = [];
@@ -1443,7 +1453,7 @@ async function loadAllData() {
       api('/summary'),
     ]);
     cachedJobs = jobsRes?.jobs || [];
-    cachedContacts = contactsRes?.contacts || [];
+    cachedContacts = deduplicateByName(contactsRes?.contacts || []);
     cachedSummary = summaryRes || null;
 
     updateSideBadges();
@@ -1652,7 +1662,7 @@ function renderCardDetail(job) {
   html += `</div></div>`;
 
   // Contacts for this job
-  const jobContacts = cachedContacts.filter(c => c.company && job.company && c.company.toLowerCase() === job.company.toLowerCase());
+  const jobContacts = deduplicateByName(cachedContacts.filter(c => c.company && job.company && c.company.toLowerCase() === job.company.toLowerCase()));
   html += `<div class="card-detail-section">`;
   html += `<h4>Linked Contacts (${jobContacts.length})</h4>`;
   if (jobContacts.length > 0) {
@@ -2075,7 +2085,7 @@ function renderBattlePlan() {
   highMatchJobs.forEach(job => {
     const score = job.match_score || job.fit_score || 0;
     const daysSince = job.updated_at ? Math.round((new Date() - new Date(job.updated_at)) / 86400000) : 0;
-    const linkedContacts = cachedContacts.filter(c => c.company && job.company && c.company.toLowerCase() === job.company.toLowerCase());
+    const linkedContacts = deduplicateByName(cachedContacts.filter(c => c.company && job.company && c.company.toLowerCase() === job.company.toLowerCase()));
     actionQueue.push({
       priority: 2,
       dotColor: 'var(--cyan)',
@@ -2102,7 +2112,7 @@ function renderBattlePlan() {
   staleJobs.forEach(job => {
     const daysSince = job.updated_at ? Math.round((new Date() - new Date(job.updated_at)) / 86400000) : 0;
     const score = job.match_score || job.fit_score || 0;
-    const linkedContacts = cachedContacts.filter(c => c.company && job.company && c.company.toLowerCase() === job.company.toLowerCase());
+    const linkedContacts = deduplicateByName(cachedContacts.filter(c => c.company && job.company && c.company.toLowerCase() === job.company.toLowerCase()));
     actionQueue.push({
       priority: 3,
       dotColor: job.status === 'interviewing' ? 'var(--yellow)' : 'var(--accent)',
@@ -2355,7 +2365,7 @@ function renderPipeline() {
       </tr>`;
 
     if (isExpanded) {
-      const jobContacts = cachedContacts.filter(c => c.company && job.company && c.company.toLowerCase() === job.company.toLowerCase());
+      const jobContacts = deduplicateByName(cachedContacts.filter(c => c.company && job.company && c.company.toLowerCase() === job.company.toLowerCase()));
       row += `
         <tr style="background:rgba(99,102,241,.02)">
           <td colspan="7" style="padding:0">
@@ -3342,7 +3352,7 @@ setInterval(async () => {
           api('/summary'),
         ]);
         cachedJobs = jobsRes?.jobs || [];
-        cachedContacts = contactsRes?.contacts || [];
+        cachedContacts = deduplicateByName(contactsRes?.contacts || []);
         cachedSummary = summaryRes || null;
         updateSideBadges();
         await refreshCurrentView();
