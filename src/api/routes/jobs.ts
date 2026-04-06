@@ -211,7 +211,7 @@ router.patch('/:id', async (req: Request, res: Response) => {
             if (!data.cover_letter) {
               const { data: profile } = await supabase
                 .from('v2_users')
-                .select('full_name, resume_text, profile_data')
+                .select('full_name, resume_text')
                 .eq('id', userId)
                 .single();
               if (profile?.resume_text) {
@@ -328,7 +328,7 @@ router.post('/generate-all-cover-letters', async (req: Request, res: Response) =
         .is('cover_letter', null),
       supabase
         .from('v2_users')
-        .select('full_name, resume_text, profile_data')
+        .select('full_name, resume_text')
         .eq('id', userId)
         .single(),
     ]);
@@ -407,7 +407,7 @@ router.post('/:id/fetch-jd', async (req: Request, res: Response) => {
       try {
         const { data: profile } = await supabase
           .from('v2_users')
-          .select('full_name, resume_text, profile_data')
+          .select('full_name, resume_text')
           .eq('id', userId)
           .single();
         if (profile?.resume_text) {
@@ -448,7 +448,7 @@ router.post('/:id/generate-cover-letter', async (req: Request, res: Response) =>
 
     const [{ data: job, error: jobErr }, { data: profile, error: profileErr }] = await Promise.all([
       supabase.from('v2_jobs').select('*').eq('id', id).eq('user_id', userId).single(),
-      supabase.from('v2_users').select('full_name, resume_text, profile_data').eq('id', userId).single(),
+      supabase.from('v2_users').select('full_name, resume_text').eq('id', userId).single(),
     ]);
 
     if (jobErr || !job) { res.status(404).json({ error: 'Job not found' }); return; }

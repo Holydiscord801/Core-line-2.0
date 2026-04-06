@@ -140,7 +140,7 @@ async function main() {
     if (!profileCache.has(job.user_id)) {
       const { data: profile } = await supabase
         .from('v2_users')
-        .select('full_name, resume_text, profile_data')
+        .select('full_name, resume_text')
         .eq('id', job.user_id)
         .single();
       profileCache.set(job.user_id, profile);
