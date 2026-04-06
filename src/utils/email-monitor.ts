@@ -217,7 +217,7 @@ export async function processSentOutreach(
     }
   }
 
-  await createFollowup(userId, jobId, contactId, timerType, reason);
+  await createFollowup(userId, jobId, contactId, timerType, reason, new Date(sentAt));
 
   // Get the follow-up ID
   const { data: followup } = await supabase
@@ -275,10 +275,11 @@ export async function createFollowup(
   jobId: string | null,
   contactId: string | null,
   timerType: TimerType,
-  reason: string
+  reason: string,
+  fromDate?: Date // Use email timestamp as timer start, not current time
 ): Promise<void> {
   const window = TIMER_DEFAULTS[timerType];
-  const dueDate = addBusinessDays(new Date(), window);
+  const dueDate = addBusinessDays(fromDate || new Date(), window);
 
   await supabase
     .from('v2_followups')

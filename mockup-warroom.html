@@ -2107,20 +2107,24 @@ async function markBPFollowupDone(followupId) {
   }
 }
 
-async function applyToJob(jobId, url) {
+// Apply button: ONLY opens the URL. Does not change status or create follow-ups.
+function applyToJob(jobId, url) {
   if (url) window.open(url, '_blank');
+}
+
+// Mark Done: updates status to applied, records timestamp, creates follow-up, marks outreach sent.
+async function markActionDone(jobId) {
   try {
     await api('/jobs/' + jobId, {
       method: 'PATCH',
       body: JSON.stringify({ status: 'applied' }),
     });
 
-    // Find the job to get company name for the follow-up reason
     const job = cachedJobs.find(j => j.id === jobId);
     const company = job ? job.company : 'this company';
     const title = job ? job.title : 'this role';
 
-    // Create a follow-up reminder (5 business days)
+    // Create follow-up reminder (5 business days from now)
     const dueDate = addBusinessDaysJS(new Date(), 5);
     try {
       await api('/followups', {
@@ -2556,7 +2560,7 @@ function renderBattlePlan() {
       const actionJob = { apply_links: item.applyLinks, url: item.url };
       buttons += renderApplyButtons(actionJob);
       if (item.jobId) {
-        buttons += `<button class="btn btn-success btn-sm" onclick="event.stopPropagation();updateJobStatus('${item.jobId}','applied')">Mark Done</button>`;
+        buttons += `<button class="btn btn-success btn-sm" onclick="event.stopPropagation();markActionDone('${item.jobId}')">Mark Done</button>`;
       }
       if (item.draft) {
         const draftKey = cacheDraft(item.draft);
