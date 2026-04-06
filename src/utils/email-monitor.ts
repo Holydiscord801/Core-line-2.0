@@ -148,6 +148,126 @@ export async function processNegativeResponse(
 }
 
 /**
+ * Process a manually sent outreach detected via email scanning.
+ * Creates outreach record and auto-generates follow-up timer.
+ */
+export async function processSentOutreach(
+  userId: string,
+  jobId: string | null,
+  contactId: string | null,
+  channel: 'email' | 'linkedin',
+  messageText: string,
+  sentAt: string
+): Promise<{ outreachId: string; followupId: string } | null> {
+  // Check if outreach already tracked (avoid duplicates)
+  if (contactId) {
+    const { data: existing } = await supabase
+      .from('v2_outreach')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('contact_id', contactId)
+      .eq('channel', channel)
+      .gte('sent_at', new Date(new Date(sentAt).getTime() - 24 * 60 * 60 * 1000).toISOString())
+      .limit(1);
+
+    if (existing && existing.length > 0) {
+      return null; // Already tracked
+    }
+  }
+
+  // Create outreach record
+  const { data: outreach, error: outreachError } = await supabase
+    .from('v2_outreach')
+    .insert({
+      user_id: userId,
+      job_id: jobId,
+      contact_id: contactId,
+      channel,
+      message_text: messageText,
+      sent_at: sentAt,
+      response_received: false,
+      outcome: 'no_response',
+    })
+    .select('id')
+    .single();
+
+  if (outreachError || !outreach) return null;
+
+  // Update contact last_contacted_at
+  if (contactId) {
+    await supabase
+      .from('v2_contacts')
+      .update({ last_contacted_at: sentAt })
+      .eq('id', contactId);
+  }
+
+  // Auto-create follow-up timer
+  const timerType: TimerType = channel === 'email' ? 'outreach_email' : 'outreach_linkedin';
+
+  // Get contact and job names for the reason
+  let reason = `Follow up on ${channel} outreach`;
+  if (contactId) {
+    const { data: contact } = await supabase
+      .from('v2_contacts')
+      .select('name, company')
+      .eq('id', contactId)
+      .single();
+    if (contact) {
+      reason = `Follow up on ${channel} outreach to ${contact.name} at ${contact.company}`;
+    }
+  }
+
+  await createFollowup(userId, jobId, contactId, timerType, reason);
+
+  // Get the follow-up ID
+  const { data: followup } = await supabase
+    .from('v2_followups')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('contact_id', contactId)
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single();
+
+  return {
+    outreachId: outreach.id,
+    followupId: followup?.id || '',
+  };
+}
+
+/**
+ * Process an inbound response detected via email scanning.
+ * Marks outreach as responded, surfaces as priority action.
+ */
+export async function processInboundResponse(
+  userId: string,
+  contactId: string,
+  responseText: string,
+  isPositive: boolean,
+  isInterview: boolean
+): Promise<void> {
+  // Find the most recent pending outreach to this contact
+  const { data: outreach } = await supabase
+    .from('v2_outreach')
+    .select('id, job_id')
+    .eq('user_id', userId)
+    .eq('contact_id', contactId)
+    .eq('response_received', false)
+    .order('sent_at', { ascending: false })
+    .limit(1)
+    .single();
+
+  if (!outreach) return;
+
+  if (isPositive || isInterview) {
+    await processPositiveResponse(userId, outreach.id, responseText, isInterview);
+  } else {
+    await processNegativeResponse(userId, outreach.id, responseText);
+  }
+}
+
+/**
  * Create a follow-up reminder based on timer type.
  */
 export async function createFollowup(

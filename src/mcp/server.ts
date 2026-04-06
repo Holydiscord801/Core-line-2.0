@@ -452,6 +452,25 @@ const tools: Tool[] = [
     },
   },
   {
+    name: 'generate_cover_letter',
+    description: 'Generates a tailored cover letter for a specific job application. Uses the user profile, full job description, and job details to create a compelling cover letter. Saves the result to v2_jobs.cover_letter.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        job_id: {
+          type: 'string',
+          description: 'UUID of the target job.',
+        },
+        style: {
+          type: 'string',
+          enum: ['formal', 'conversational', 'executive'],
+          description: 'Cover letter style. Default: executive.',
+        },
+      },
+      required: ['job_id'],
+    },
+  },
+  {
     name: 'create_gmail_draft',
     description: 'Creates a Gmail draft for outreach. Logs the draft in Core Line and provides instructions for the AI to create the actual Gmail draft via Gmail MCP tools. Links the draft to a job and contact for tracking.',
     inputSchema: {
@@ -483,7 +502,7 @@ const tools: Tool[] = [
   },
   {
     name: 'check_email_responses',
-    description: 'Returns all sent outreach messages that have not received a response yet. The AI should check Gmail for replies to these threads and report back using mark_outreach_response(). Run this every 2 hours during work hours.',
+    description: 'Returns all sent outreach messages that have not received a response yet. The AI should:\n1. Check Gmail INBOX for replies to these threads\n2. Check Gmail SENT folder for outreach emails to known contacts (to detect when Micah sends outreach manually)\n3. Check Gmail ARCHIVED/ALL MAIL for missed replies\n\nFor inbox replies from known contacts: call mark_outreach_response() with the outcome.\nFor sent emails to known contacts not yet tracked: call log_outreach() to create the record, then this will auto-generate a follow-up timer.\n\nRun this every 2 hours during work hours.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1265,6 +1284,72 @@ Key points to include:
   };
 }
 
+interface GenerateCoverLetterParams {
+  job_id: string;
+  style?: 'formal' | 'conversational' | 'executive';
+}
+
+async function generateCoverLetter(params: GenerateCoverLetterParams): Promise<object> {
+  const userId = requireAuth();
+  const profile = await getProfile();
+
+  const { data: job } = await supabase
+    .from('v2_jobs')
+    .select('*')
+    .eq('id', params.job_id)
+    .eq('user_id', userId)
+    .single();
+
+  if (!job) throw new Error('Job not found');
+
+  const style = params.style || 'executive';
+  const jd = job.job_description || job.description || job.notes || '';
+  const resumeText = profile.resume_text || '';
+
+  // Build the cover letter generation context
+  const context = {
+    user_name: profile.full_name,
+    user_summary: resumeText.substring(0, 1000),
+    job_title: job.title,
+    company: job.company,
+    job_description: jd.substring(0, 2000),
+    salary_range: job.salary_min && job.salary_max
+      ? `$${(job.salary_min / 1000).toFixed(0)}K-$${(job.salary_max / 1000).toFixed(0)}K`
+      : null,
+    location: job.location,
+    match_score: job.match_score || job.fit_score,
+    resume_variant: job.resume_variant,
+  };
+
+  return {
+    context,
+    instructions: `Write a ${style} cover letter from ${profile.full_name} for the ${job.title} role at ${job.company}.
+
+Resume/Background:
+${resumeText.substring(0, 800)}
+
+Job Description:
+${jd.substring(0, 1500) || 'Not available - use role title and company context.'}
+
+Guidelines:
+- Style: ${style === 'executive' ? 'Confident, strategic, emphasize leadership and P&L impact' : style === 'formal' ? 'Traditional business letter format, professional tone' : 'Personable, story-driven, still professional'}
+- Open with a compelling hook about why this role specifically
+- Connect 2-3 specific experiences from the resume to the job requirements
+- Quantify achievements where possible (team sizes, revenue impact, transaction volumes)
+- ${job.resume_variant ? `Emphasize ${job.resume_variant} experience` : 'Emphasize the strongest alignment'}
+- Close with enthusiasm and a clear call to action
+- Keep it under 400 words
+- Do NOT include address blocks or date - just the body text`,
+    style,
+    save_instructions: `After generating the cover letter, save it by calling update_job_status with job_id="${job.id}" and include the cover_letter field. Or the AI can directly update v2_jobs.cover_letter.`,
+    next_steps: [
+      'Generate the cover letter based on the context and instructions above',
+      `Save to database: UPDATE v2_jobs SET cover_letter = '<generated text>' WHERE id = '${job.id}'`,
+      'The cover letter will appear in the UI automatically',
+    ],
+  };
+}
+
 async function createGmailDraft(params: CreateGmailDraftParams): Promise<object> {
   const userId = requireAuth();
 
@@ -1354,16 +1439,42 @@ async function checkEmailResponses(params: CheckEmailResponsesParams): Promise<o
     };
   });
 
+  // Collect contact emails for SENT folder scanning
+  const contactEmails = new Set<string>();
+  for (const p of pending) {
+    if (p.contact_email) contactEmails.add(p.contact_email);
+  }
+
+  // Also get all known contacts with email addresses for SENT scanning
+  const { data: allContacts } = await supabase
+    .from('v2_contacts')
+    .select('id, name, email, company')
+    .eq('user_id', userId)
+    .not('email', 'is', null);
+
+  const contacts_to_scan = (allContacts || [])
+    .filter((c: any) => c.email)
+    .map((c: any) => ({
+      contact_id: c.id,
+      name: c.name,
+      email: c.email,
+      company: c.company,
+    }));
+
   return {
     pending_responses: pending,
     total: pending.length,
     overdue: pending.filter((p: any) => p.is_overdue).length,
+    contacts_to_scan,
     instructions: `Check Gmail for replies to these ${pending.length} outreach messages. For each:
-1. Search Gmail for threads with these contacts
-2. If reply found: call mark_outreach_response() with the outcome
-3. If positive reply: outcome='positive' or outcome='interview_scheduled'
-4. If rejection: outcome='negative'
-5. If no reply and overdue: the follow-up system will handle it`,
+1. Search Gmail INBOX for threads with these contacts
+2. Search Gmail SENT folder for emails to contacts_to_scan addresses (detect manual outreach by Micah)
+3. Search Gmail ALL MAIL/ARCHIVED for missed replies
+4. If reply found: call mark_outreach_response() with the outcome
+5. If positive reply: outcome='positive' or outcome='interview_scheduled'
+6. If rejection: outcome='negative'
+7. If sent email to known contact not yet tracked: call log_outreach() to create the record
+8. If no reply and overdue: the follow-up system will handle it`,
   };
 }
 
@@ -1593,6 +1704,13 @@ export async function createMCPServer(): Promise<Server> {
             job_id: args?.job_id as string,
             contact_id: args?.contact_id as string,
             tone: args?.tone as 'professional' | 'warm' | 'direct',
+          });
+          break;
+
+        case 'generate_cover_letter':
+          result = await generateCoverLetter({
+            job_id: args?.job_id as string,
+            style: args?.style as 'formal' | 'conversational' | 'executive',
           });
           break;
 

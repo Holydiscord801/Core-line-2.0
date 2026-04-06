@@ -34,8 +34,8 @@ if (!supabaseUrl || !supabaseKey) {
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-const HTML_PATH = '/tmp/battle_plan.html';
-const USER_EMAIL = 'micah.processmodel@gmail.com';
+const HTML_PATH = process.argv[2] || '/home/micah/Documents/Claude/Projects/Jobs/Battle_Plan_Command_Center.html';
+const USER_EMAIL = process.env.IMPORT_USER_EMAIL || 'micah@coreline.app';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -57,7 +57,9 @@ interface ParsedCard {
   resume_variant: string | null;
   notes: string | null;
   outreach_draft: string | null;
+  job_description: string | null;
   apply_url: string | null;
+  apply_links: Array<{ label: string; url: string; source: string }>;
   contacts: ParsedContact[];
   sent_outreach: SentOutreach[];
   section: string;
@@ -309,6 +311,20 @@ function parseContactNameTitle(text: string): { name: string; title: string | nu
   return { name: cleaned, title: null };
 }
 
+function detectSource(url: string): string {
+  if (!url) return 'other';
+  const u = url.toLowerCase();
+  if (u.includes('linkedin.com/jobs')) return 'linkedin';
+  if (u.includes('indeed.com')) return 'indeed';
+  if (u.includes('greenhouse.io') || u.includes('greenhouse.')) return 'greenhouse';
+  if (u.includes('lever.co')) return 'lever';
+  if (u.includes('myworkdayjobs.com') || u.includes('workday')) return 'workday';
+  if (u.includes('ashbyhq.com')) return 'ashby';
+  if (u.includes('builtin.com')) return 'builtin';
+  if (u.includes('jobgether.com')) return 'jobgether';
+  return 'direct';
+}
+
 // ---------------------------------------------------------------------------
 // Card Parser
 // ---------------------------------------------------------------------------
@@ -451,7 +467,7 @@ function parseOneCard(cardHtml: string, section: string): ParsedCard | null {
   const badgeMatch = cardHtml.match(/<span class="badge\s+([^"]*)"[^>]*>([^<]*)<\/span>/);
   const badgeClass = badgeMatch ? badgeMatch[1] : '';
   const badgeText = badgeMatch ? decodeHtmlEntities(badgeMatch[2]).trim() : '';
-  const { status, posting_status } = mapBadgeToStatus(badgeClass, badgeText);
+  let { status: cardStatus, posting_status: cardPostingStatus } = mapBadgeToStatus(badgeClass, badgeText);
 
   // Resume variant mapping
   const resumeVariant = resumeVariantRaw ? mapResumeVariant(resumeVariantRaw) : null;
@@ -466,18 +482,66 @@ function parseOneCard(cardHtml: string, section: string): ParsedCard | null {
   const notesMatch = cardHtml.match(/<div class="notes">([\s\S]*?)<\/div>/);
   const notes = notesMatch ? extractText(notesMatch[1]).trim() : null;
 
-  // Apply URL
+  // Apply Links -- collect ALL, not just first
   let applyUrl: string | null = null;
-  const applyMatches = cardHtml.matchAll(/<a\s+[^>]*class="link-btn"[^>]*href="([^"]*)"[^>]*>[^<]*Apply[^<]*<\/a>/gi);
-  for (const am of applyMatches) {
-    applyUrl = am[1];
-    break; // take first apply link
+  const applyLinks: Array<{ label: string; url: string; source: string }> = [];
+
+  // Match all link-btn anchors that contain Apply, Built In, Careers, or Apply Now
+  const allLinkBtns = cardHtml.matchAll(/<a\s+[^>]*href="([^"]*)"[^>]*class="link-btn"[^>]*>([^<]*)<\/a>|<a\s+[^>]*class="link-btn"[^>]*href="([^"]*)"[^>]*>([^<]*)<\/a>/gi);
+  for (const am of allLinkBtns) {
+    const url = am[1] || am[3];
+    const rawLabel = extractText(am[2] || am[4] || '');
+
+    // Skip contact links (LinkedIn profile links, not job links)
+    if (!rawLabel) continue;
+    if (url && /linkedin\.com\/in\//i.test(url)) continue;
+
+    // Only include links that are apply-like
+    const isApply = /apply|built\s*in|careers\s*page|listing/i.test(rawLabel);
+    if (!isApply) continue;
+
+    // Clean label: strip emoji prefixes
+    const label = rawLabel.replace(/^[\u{1F4E4}\u{1F517}\u{274C}\u{2705}\s]*/u, '').trim();
+
+    // Determine source from URL domain
+    const source = detectSource(url);
+
+    applyLinks.push({ label: label || 'Apply', url, source });
+    if (!applyUrl) applyUrl = url;
+  }
+
+  // Check for "Posting Removed" indicator
+  const hasPostingRemoved = /<span[^>]*class="link-btn"[^>]*>[^<]*Posting Removed[^<]*<\/span>/i.test(cardHtml);
+
+  // Override posting_status if posting removed indicator found and no apply links
+  if (hasPostingRemoved && applyLinks.length === 0) {
+    cardPostingStatus = 'dead';
+    applyUrl = null;
   }
 
   // First outreach text as outreach_draft
   // The outreach-text div ends with </div> followed by a <button class="copy-btn">
   const outreachTextMatch = cardHtml.match(/<div class="outreach-text"[^>]*>([\s\S]*?)<\/div>\s*<button class="copy-btn"/);
   const outreachDraft = outreachTextMatch ? extractText(outreachTextMatch[1]).trim() : null;
+
+  // Job description: use notes if substantial, plus any detail-grid information
+  let jobDescription: string | null = null;
+  // Collect detail grid items as structured description
+  const descParts: string[] = [];
+  const allDetailItems = cardHtml.matchAll(/<div class="dl">([^<]*)<\/div>\s*<div class="dv"[^>]*>([\s\S]*?)<\/div>/g);
+  for (const di of allDetailItems) {
+    const label = extractText(di[1]).trim();
+    const value = extractText(di[2]).trim();
+    if (label && value && !['Contact', 'LinkedIn', 'Reach Out To', 'CEO', 'Hiring Manager'].some(skip => label.includes(skip))) {
+      descParts.push(`${label}: ${value}`);
+    }
+  }
+  if (descParts.length > 0) {
+    jobDescription = descParts.join('\n');
+  }
+  if (notes && notes.length > 50) {
+    jobDescription = (jobDescription ? jobDescription + '\n\nNotes: ' : '') + notes;
+  }
 
   // Parse contacts
   const contacts = parseContacts(cardHtml, company);
@@ -495,13 +559,15 @@ function parseOneCard(cardHtml: string, section: string): ParsedCard | null {
     remote,
     badge_class: badgeClass,
     badge_text: badgeText,
-    status,
-    posting_status,
+    status: cardStatus,
+    posting_status: cardPostingStatus,
     match_score: matchScore,
     resume_variant: resumeVariant,
     notes,
     outreach_draft: outreachDraft,
+    job_description: jobDescription,
     apply_url: applyUrl,
+    apply_links: applyLinks,
     contacts,
     sent_outreach: sentOutreach,
     section,
@@ -802,7 +868,7 @@ async function main() {
   console.log(`  HTML file loaded (${(html.length / 1024).toFixed(1)} KB)\n`);
 
   // 2. Look up user
-  console.log('[1/5] Looking up user...');
+  console.log('[1/4] Looking up user...');
   const { data: user, error: userError } = await supabase
     .from('v2_users')
     .select('id')
@@ -819,126 +885,199 @@ async function main() {
   console.log(`  Found user: ${USER_EMAIL} (${userId})\n`);
 
   // 3. Parse cards
-  console.log('[2/5] Parsing HTML cards...');
+  console.log('[2/4] Parsing HTML cards...');
   const cards = parseCards(html);
   console.log(`  Found ${cards.length} cards\n`);
 
-  // 4. Get existing jobs for duplicate check
-  console.log('[3/5] Checking for existing jobs...');
-  const { data: existingJobs } = await supabase
-    .from('v2_jobs')
-    .select('company, title')
-    .eq('user_id', userId);
-
-  const existingCompanies = new Set(
-    (existingJobs ?? []).map((j) => `${j.company}|||${j.title}`)
-  );
-  console.log(`  Found ${existingJobs?.length ?? 0} existing jobs\n`);
-
-  // 5. Import each card
-  console.log('[4/5] Importing cards...\n');
+  // 4. Import each card (UPSERT)
+  console.log('[3/4] Importing cards (upsert mode)...\n');
 
   for (let i = 0; i < cards.length; i++) {
     const card = cards[i];
     const cardNum = i + 1;
 
-    // Check for duplicates
-    const key = `${card.company}|||${card.role}`;
-    if (existingCompanies.has(key)) {
-      console.log(`  [${cardNum}/${cards.length}] SKIP (duplicate): ${card.company} - ${card.role}`);
-      stats.jobs_skipped++;
-      continue;
-    }
+    console.log(`  [${cardNum}/${cards.length}] Processing: ${card.company} - ${card.role}`);
 
-    console.log(`  [${cardNum}/${cards.length}] Importing: ${card.company} - ${card.role}`);
-
-    // Insert job
-    const jobRow = {
-      user_id: userId,
-      title: card.role,
-      company: card.company,
-      url: card.apply_url,
-      salary_min: card.salary_min,
-      salary_max: card.salary_max,
-      location: card.location,
-      remote: card.remote,
-      status: card.status,
-      fit_score: card.match_score ?? (card.section === 'active' ? 80 : 75),
-      match_score: card.match_score,
-      source: 'linkedin' as const,
-      resume_variant: card.resume_variant,
-      posting_status: card.posting_status,
-      notes: card.notes,
-      outreach_draft: card.outreach_draft,
-      applied_at:
-        card.status === 'applied' || card.status === 'interviewing'
-          ? new Date().toISOString()
-          : null,
-    };
-
-    const { data: insertedJob, error: jobError } = await supabase
+    // UPSERT: Check if job already exists for this company
+    const { data: existingJob } = await supabase
       .from('v2_jobs')
-      .insert(jobRow)
       .select('id')
-      .single();
+      .eq('user_id', userId)
+      .ilike('company', card.company)
+      .maybeSingle();
 
-    if (jobError) {
-      console.error(`    Job insert failed: ${jobError.message}`);
-      stats.warnings.push(`Job insert failed for ${card.company}: ${jobError.message}`);
-      continue;
-    }
+    let jobId: string;
 
-    const jobId = insertedJob!.id;
-    stats.jobs_imported++;
-    existingCompanies.add(key);
-
-    // Insert contacts
-    for (const contact of card.contacts) {
-      if (!contact.name || contact.name.length < 2) continue;
-
-      const contactRow = {
-        user_id: userId,
-        name: contact.name,
-        title: contact.title,
-        company: card.company,
-        linkedin_url: contact.linkedin_url,
-        email: contact.email,
-        relationship_type: 'hiring_manager' as const,
-        warmth_score: 0,
-        response_count: 0,
+    if (existingJob) {
+      // UPDATE existing job with parsed data
+      const updateData: Record<string, any> = {
+        url: card.apply_url,
+        apply_links: card.apply_links,
+        posting_status: card.posting_status,
       };
+      // Only update fields that have meaningful values from the HTML
+      if (card.role) updateData.title = card.role;
+      if (card.salary_min !== null) updateData.salary_min = card.salary_min;
+      if (card.salary_max !== null) updateData.salary_max = card.salary_max;
+      if (card.location) updateData.location = card.location;
+      if (card.match_score !== null) updateData.match_score = card.match_score;
+      if (card.match_score !== null) updateData.fit_score = card.match_score;
+      if (card.resume_variant) updateData.resume_variant = card.resume_variant;
+      if (card.notes) updateData.notes = card.notes;
+      if (card.outreach_draft) updateData.outreach_draft = card.outreach_draft;
+      if (card.job_description) updateData.job_description = card.job_description;
+      updateData.remote = card.remote;
 
-      const { data: insertedContact, error: contactError } = await supabase
-        .from('v2_contacts')
-        .insert(contactRow)
-        .select('id')
-        .single();
+      const { error: updateError } = await supabase
+        .from('v2_jobs')
+        .update(updateData)
+        .eq('id', existingJob.id);
 
-      if (contactError) {
-        stats.warnings.push(
-          `Contact insert failed for ${contact.name} at ${card.company}: ${contactError.message}`
-        );
+      if (updateError) {
+        console.error(`    Job update failed: ${updateError.message}`);
+        stats.warnings.push(`Job update failed for ${card.company}: ${updateError.message}`);
         continue;
       }
 
-      stats.contacts_created++;
-      const contactId = insertedContact!.id;
+      jobId = existingJob.id;
+      stats.jobs_imported++;
+      console.log(`  [${cardNum}/${cards.length}] UPDATED: ${card.company} - ${card.role}`);
+    } else {
+      // INSERT new job
+      const jobRow = {
+        user_id: userId,
+        title: card.role,
+        company: card.company,
+        url: card.apply_url,
+        apply_links: card.apply_links,
+        salary_min: card.salary_min,
+        salary_max: card.salary_max,
+        location: card.location,
+        remote: card.remote,
+        status: card.status,
+        fit_score: card.match_score ?? (card.section === 'active' ? 80 : 75),
+        match_score: card.match_score,
+        source: 'linkedin' as const,
+        resume_variant: card.resume_variant,
+        posting_status: card.posting_status,
+        notes: card.notes,
+        outreach_draft: card.outreach_draft,
+        job_description: card.job_description,
+        applied_at:
+          card.status === 'applied' || card.status === 'interviewing'
+            ? new Date().toISOString()
+            : null,
+      };
 
-      // Link contact to job
-      const { error: linkError } = await supabase
-        .from('v2_job_contacts')
-        .insert({
-          job_id: jobId,
-          contact_id: contactId,
-          relevance_notes: `${contact.name}${contact.title ? ' (' + contact.title + ')' : ''} at ${card.company}`,
-        });
+      const { data: insertedJob, error: jobError } = await supabase
+        .from('v2_jobs')
+        .insert(jobRow)
+        .select('id')
+        .single();
 
-      if (linkError) {
-        stats.warnings.push(
-          `Job-contact link failed for ${contact.name}: ${linkError.message}`
-        );
+      if (jobError) {
+        console.error(`    Job insert failed: ${jobError.message}`);
+        stats.warnings.push(`Job insert failed for ${card.company}: ${jobError.message}`);
+        continue;
+      }
+
+      jobId = insertedJob!.id;
+      stats.jobs_imported++;
+      console.log(`  [${cardNum}/${cards.length}] INSERTED: ${card.company} - ${card.role}`);
+    }
+
+    // UPSERT contacts
+    for (const contact of card.contacts) {
+      if (!contact.name || contact.name.length < 2) continue;
+
+      // Check if contact already exists
+      const { data: existingContact } = await supabase
+        .from('v2_contacts')
+        .select('id, linkedin_url, email')
+        .eq('user_id', userId)
+        .ilike('name', contact.name)
+        .ilike('company', card.company)
+        .maybeSingle();
+
+      let contactId: string;
+
+      if (existingContact) {
+        // Update existing contact with any new data
+        const contactUpdate: Record<string, any> = {};
+        // Always prefer the imported LinkedIn URL (it comes from the source of truth HTML)
+        if (contact.linkedin_url && contact.linkedin_url.includes('linkedin.com/in/')) {
+          contactUpdate.linkedin_url = contact.linkedin_url;
+        }
+        // Always prefer the imported email
+        if (contact.email) {
+          contactUpdate.email = contact.email;
+        }
+        if (contact.title) {
+          contactUpdate.title = contact.title;
+        }
+
+        if (Object.keys(contactUpdate).length > 0) {
+          await supabase
+            .from('v2_contacts')
+            .update(contactUpdate)
+            .eq('id', existingContact.id);
+        }
+
+        contactId = existingContact.id;
       } else {
-        stats.contacts_linked++;
+        const contactRow = {
+          user_id: userId,
+          name: contact.name,
+          title: contact.title,
+          company: card.company,
+          linkedin_url: contact.linkedin_url,
+          email: contact.email,
+          relationship_type: 'hiring_manager' as const,
+          warmth_score: 0,
+          response_count: 0,
+        };
+
+        const { data: insertedContact, error: contactError } = await supabase
+          .from('v2_contacts')
+          .insert(contactRow)
+          .select('id')
+          .single();
+
+        if (contactError) {
+          stats.warnings.push(
+            `Contact insert failed for ${contact.name} at ${card.company}: ${contactError.message}`
+          );
+          continue;
+        }
+
+        stats.contacts_created++;
+        contactId = insertedContact!.id;
+      }
+
+      // Link contact to job (check if link already exists)
+      const { data: existingLink } = await supabase
+        .from('v2_job_contacts')
+        .select('id')
+        .eq('job_id', jobId)
+        .eq('contact_id', contactId)
+        .maybeSingle();
+
+      if (!existingLink) {
+        const { error: linkError } = await supabase
+          .from('v2_job_contacts')
+          .insert({
+            job_id: jobId,
+            contact_id: contactId,
+            relevance_notes: `${contact.name}${contact.title ? ' (' + contact.title + ')' : ''} at ${card.company}`,
+          });
+
+        if (linkError) {
+          stats.warnings.push(
+            `Job-contact link failed for ${contact.name}: ${linkError.message}`
+          );
+        } else {
+          stats.contacts_linked++;
+        }
       }
 
       // Check if this contact has sent outreach
@@ -1019,11 +1158,10 @@ async function main() {
     console.log(`    ${card.status.toUpperCase()} | ${details}`);
   }
 
-  // 5. Summary
-  console.log('\n[5/5] Import complete\n');
+  // 4. Summary
+  console.log('\n[4/4] Import complete\n');
   console.log('--- IMPORT SUMMARY ---');
-  console.log(`Jobs imported:    ${stats.jobs_imported}`);
-  console.log(`Jobs skipped:     ${stats.jobs_skipped} (duplicates)`);
+  console.log(`Jobs upserted:    ${stats.jobs_imported}`);
   console.log(`Contacts created: ${stats.contacts_created}`);
   console.log(`Contacts linked:  ${stats.contacts_linked}`);
   console.log(`Outreach logged:  ${stats.outreach_logged}`);

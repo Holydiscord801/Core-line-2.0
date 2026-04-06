@@ -59,6 +59,9 @@ export interface V2Job {
   posting_status: 'live' | 'dead' | 'expired' | 'unknown';
   posting_verified_at: string | null;
   outreach_draft: string | null;
+  apply_links: Array<{ label: string; url: string; source: string }> | null;
+  job_description: string | null;
+  cover_letter: string | null;
 }
 
 export type RelationshipType = 'hiring_manager' | 'reports_to' | 'peer' | 'recruiter' | 'mutual_connection' | 'warm_intro' | 'other';

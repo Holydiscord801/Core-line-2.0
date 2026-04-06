@@ -34,6 +34,44 @@ router.get('/', async (req: Request, res: Response) => {
   }
 });
 
+// POST /api/followups - Create a follow-up reminder
+router.post('/', async (req: Request, res: Response) => {
+  try {
+    const userId = req.userId!;
+    const { job_id, contact_id, due_date, reason, priority, timer_type, business_days_window } = req.body;
+
+    if (!due_date || !reason) {
+      res.status(400).json({ error: 'due_date and reason are required' });
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('v2_followups')
+      .insert({
+        user_id: userId,
+        job_id: job_id || null,
+        contact_id: contact_id || null,
+        due_date,
+        reason,
+        priority: priority || 'medium',
+        status: 'pending',
+        timer_type: timer_type || 'application',
+        business_days_window: business_days_window || 5,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      res.status(500).json({ error: error.message });
+      return;
+    }
+
+    res.status(201).json({ followup: data });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to create followup' });
+  }
+});
+
 // PATCH /api/followups/:id
 router.patch('/:id', async (req: Request, res: Response) => {
   try {

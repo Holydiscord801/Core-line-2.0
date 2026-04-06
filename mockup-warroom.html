@@ -1721,7 +1721,7 @@ function renderCardDetail(job) {
   html += `<div class="card-detail-section">`;
   html += `<h4>Linked Contacts (${jobContacts.length})</h4>`;
   if (jobContacts.length > 0) {
-    html += jobContacts.map(c => `<div style="font-size:12px;margin-bottom:6px"><strong style="color:var(--text)">${esc(c.name)}</strong> <span style="color:var(--dim)">${esc(c.title || '')}</span>${c.relationship_type ? ` <span class="relationship-badge rel-${c.relationship_type}" style="font-size:8px">${c.relationship_type.replace(/_/g, ' ')}</span>` : ''}</div>`).join('');
+    html += jobContacts.map(c => `<div style="font-size:12px;margin-bottom:6px">${c.linkedin_url ? `<a href="${esc(c.linkedin_url)}" target="_blank" style="color:var(--cyan);text-decoration:none;font-weight:600" onclick="event.stopPropagation()">${esc(c.name)}</a>` : `<strong style="color:var(--text)">${esc(c.name)}</strong>`} <span style="color:var(--dim)">${esc(c.title || '')}</span>${c.relationship_type ? ` <span class="relationship-badge rel-${c.relationship_type}" style="font-size:8px">${c.relationship_type.replace(/_/g, ' ')}</span>` : ''}${c.email ? `<div style="margin-top:2px"><a href="mailto:${esc(c.email)}" style="font-size:11px;color:var(--green);text-decoration:none;opacity:.85" onclick="event.stopPropagation()">${esc(c.email)}</a></div>` : ''}</div>`).join('');
   } else {
     html += `<div style="font-size:12px;color:var(--dim)">No contacts linked to this company yet.</div>`;
   }
@@ -1735,14 +1735,21 @@ function renderCardDetail(job) {
     html += `</div>`;
   }
 
+  // Cover letter section
+  if (job.cover_letter) {
+    html += `<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">`;
+    html += `<h4 style="font-size:11px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Cover Letter</h4>`;
+    html += `<div style="font-size:12px;color:var(--dim);font-style:italic;max-height:60px;overflow:hidden">"${esc(job.cover_letter).substring(0, 150)}${job.cover_letter.length > 150 ? '...' : ''}"</div>`;
+    html += `<button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="event.stopPropagation();showCoverLetterModal('${cacheDraft(job.cover_letter)}')">View Cover Letter</button>`;
+    html += `</div>`;
+  }
+
   html += `</div>`;
   html += `</div>`; // end row
 
   // Actions
   html += `<div class="card-detail-actions">`;
-  if (job.url) {
-    html += `<button class="btn btn-primary" onclick="event.stopPropagation();applyToJob('${job.id}','${esc(job.url)}')">Apply Now</button>`;
-  }
+  html += renderApplyButtons(job);
   if (job.status === 'new' || job.status === 'researching') {
     html += `<button class="btn btn-success" onclick="event.stopPropagation();updateJobStatus('${job.id}','applied')">Mark Applied</button>`;
   }
@@ -1926,7 +1933,7 @@ function renderBPItemDetail(item) {
     html += `<div class="card-detail-section">`;
     html += `<h4>Linked Contacts (${jobContacts.length})</h4>`;
     if (jobContacts.length > 0) {
-      html += jobContacts.map(c => `<div style="font-size:12px;margin-bottom:6px"><strong style="color:var(--text)">${esc(c.name)}</strong> <span style="color:var(--dim)">${esc(c.title || '')}</span>${c.relationship_type ? ` <span class="relationship-badge rel-${c.relationship_type}" style="font-size:8px">${c.relationship_type.replace(/_/g, ' ')}</span>` : ''}${c.linkedin_url ? ` <a href="${esc(c.linkedin_url)}" target="_blank" style="color:var(--accent);font-size:11px" onclick="event.stopPropagation()">LinkedIn</a>` : ''}</div>`).join('');
+      html += jobContacts.map(c => `<div style="font-size:12px;margin-bottom:6px">${c.linkedin_url ? `<a href="${esc(c.linkedin_url)}" target="_blank" style="color:var(--cyan);text-decoration:none;font-weight:600" onclick="event.stopPropagation()">${esc(c.name)}</a>` : `<strong style="color:var(--text)">${esc(c.name)}</strong>`} <span style="color:var(--dim)">${esc(c.title || '')}</span>${c.relationship_type ? ` <span class="relationship-badge rel-${c.relationship_type}" style="font-size:8px">${c.relationship_type.replace(/_/g, ' ')}</span>` : ''}${c.email ? `<div style="margin-top:2px"><a href="mailto:${esc(c.email)}" style="font-size:11px;color:var(--green);text-decoration:none;opacity:.85" onclick="event.stopPropagation()">${esc(c.email)}</a></div>` : ''}</div>`).join('');
     } else {
       html += `<div style="font-size:12px;color:var(--dim)">No contacts linked yet.</div>`;
     }
@@ -1937,12 +1944,19 @@ function renderBPItemDetail(item) {
       html += `<button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="event.stopPropagation();showDraftByKey('${cacheDraft(job.outreach_draft)}')">View Full Draft</button>`;
       html += `</div>`;
     }
+    if (job.cover_letter) {
+      html += `<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">`;
+      html += `<h4 style="font-size:11px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Cover Letter</h4>`;
+      html += `<div style="font-size:12px;color:var(--dim);font-style:italic;max-height:60px;overflow:hidden">"${esc(job.cover_letter).substring(0, 150)}${job.cover_letter.length > 150 ? '...' : ''}"</div>`;
+      html += `<button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="event.stopPropagation();showCoverLetterModal('${cacheDraft(job.cover_letter)}')">View Cover Letter</button>`;
+      html += `</div>`;
+    }
     html += `</div>`;
     html += `</div>`; // end row
 
     // Action buttons
     html += `<div class="detail-actions">`;
-    if (job.url) html += `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();applyToJob('${job.id}','${esc(job.url)}')">Apply Now</button>`;
+    html += renderApplyButtons(job);
     if (job.status === 'new' || job.status === 'researching') html += `<button class="btn btn-success btn-sm" onclick="event.stopPropagation();updateJobStatus('${job.id}','applied')">Mark Applied</button>`;
     if (job.status === 'applied') html += `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();updateJobStatus('${job.id}','interviewing')">Move to Interviewing</button>`;
     if (job.status === 'interviewing') html += `<button class="btn btn-success btn-sm" onclick="event.stopPropagation();updateJobStatus('${job.id}','offer')">Mark Offer</button>`;
@@ -2078,7 +2092,32 @@ async function applyToJob(jobId, url) {
       method: 'PATCH',
       body: JSON.stringify({ status: 'applied' }),
     });
-    showToast('Marked as applied', 'success');
+
+    // Find the job to get company name for the follow-up reason
+    const job = cachedJobs.find(j => j.id === jobId);
+    const company = job ? job.company : 'this company';
+    const title = job ? job.title : 'this role';
+
+    // Create a follow-up reminder (5 business days)
+    const dueDate = addBusinessDaysJS(new Date(), 5);
+    try {
+      await api('/followups', {
+        method: 'POST',
+        body: JSON.stringify({
+          job_id: jobId,
+          contact_id: null,
+          due_date: dueDate.toISOString().split('T')[0],
+          reason: `Follow up on ${title} application at ${company} if no response`,
+          priority: 'medium',
+          timer_type: 'application',
+          business_days_window: 5,
+        }),
+      });
+    } catch (fuErr) {
+      console.warn('Follow-up creation failed:', fuErr.message);
+    }
+
+    showToast('Marked as applied + follow-up set', 'success');
     await loadAllData();
     refreshCurrentView();
   } catch (err) {
@@ -2120,6 +2159,30 @@ function cacheDraft(text) {
 
 function showDraftByKey(key) {
   showDraftModal(_draftCache[key] || '(Draft not found)');
+}
+
+function showCoverLetterModal(draftKey) {
+  const text = _draftCache[draftKey] || '';
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  const modalEl = document.createElement('div');
+  modalEl.className = 'modal';
+  modalEl.style.maxWidth = '600px';
+  modalEl.innerHTML = `
+    <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">&#x2715;</button>
+    <h2 class="modal-title" style="font-size:18px;text-align:left;margin-bottom:16px">Cover Letter</h2>
+    <div style="background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:12px;padding:20px;font-size:13px;line-height:1.8;color:var(--dim);white-space:pre-wrap;max-height:400px;overflow-y:auto">${esc(text)}</div>
+    <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end">
+      <button class="btn btn-ghost" id="_clCopyBtn">Copy</button>
+      <button class="btn btn-primary" onclick="this.closest('.modal-overlay').remove()">Close</button>
+    </div>`;
+  overlay.appendChild(modalEl);
+  document.body.appendChild(overlay);
+  document.getElementById('_clCopyBtn').onclick = () => {
+    navigator.clipboard.writeText(text);
+    showToast('Cover letter copied', 'success');
+  };
 }
 
 function showDraftModal(draft) {
@@ -2287,11 +2350,13 @@ function renderBattlePlan() {
       title: `${esc(job.company)} - ${esc(job.title)}`,
       description: score >= 80 ? 'High match - apply and send outreach' : 'Good match - review and apply',
       matchScore: score,
+      resumeVariant: job.resume_variant || job.resume_version || null,
       contactName: linkedContacts.length > 0 ? linkedContacts[0].name : null,
       type: 'job',
       followupId: null,
       jobId: job.id,
       url: job.url,
+      applyLinks: job.apply_links,
       draft: job.outreach_draft,
       daysInactive: daysSince,
     });
@@ -2314,11 +2379,13 @@ function renderBattlePlan() {
       title: `${esc(job.company)} - ${esc(job.title)}`,
       description: daysSince >= 5 ? `Stale outreach - ${daysSince} days since update` : `${formatStatus(job.status)} - day ${daysSince}`,
       matchScore: score,
+      resumeVariant: job.resume_variant || job.resume_version || null,
       contactName: linkedContacts.length > 0 ? linkedContacts[0].name : null,
       type: 'job',
       followupId: null,
       jobId: job.id,
       url: job.url,
+      applyLinks: job.apply_links,
       draft: job.outreach_draft,
       daysInactive: daysSince,
     });
@@ -2340,11 +2407,13 @@ function renderBattlePlan() {
       title: `${esc(job.company)} - ${esc(job.title)}`,
       description: `Monitoring - day ${daysSince}`,
       matchScore: score,
+      resumeVariant: job.resume_variant || job.resume_version || null,
       contactName: null,
       type: 'job',
       followupId: null,
       jobId: job.id,
       url: job.url,
+      applyLinks: job.apply_links,
       draft: job.outreach_draft,
       daysInactive: daysSince,
     });
@@ -2425,6 +2494,12 @@ function renderBattlePlan() {
       scoreBadge = `<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;color:${scoreColor};background:${scoreBg};border:1px solid ${scoreColor}30;margin-left:8px">${item.matchScore}%</span>`;
     }
 
+    // Resume variant tag
+    let resumeTag = '';
+    if (item.resumeVariant) {
+      resumeTag = ` <span style="font-size:9px;font-weight:600;padding:2px 6px;border-radius:4px;color:var(--accent2);background:rgba(139,92,246,.1);border:1px solid rgba(139,92,246,.2)">${esc(item.resumeVariant)}</span>`;
+    }
+
     // Contact tag
     let contactTag = '';
     if (item.contactName) {
@@ -2456,9 +2531,8 @@ function renderBattlePlan() {
           </div>
         </div>`;
     } else if (item.type === 'job') {
-      if (item.url) {
-        buttons += `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();applyToJob('${item.jobId}', '${esc(item.url)}')">Apply Now</button>`;
-      }
+      const actionJob = { apply_links: item.applyLinks, url: item.url };
+      buttons += renderApplyButtons(actionJob);
       if (item.jobId) {
         buttons += `<button class="btn btn-success btn-sm" onclick="event.stopPropagation();updateJobStatus('${item.jobId}','applied')">Mark Done</button>`;
       }
@@ -2478,7 +2552,7 @@ function renderBattlePlan() {
         <div class="action-item${isExpanded ? ' action-expanded' : ''}" onclick="toggleActionItem('${itemId}')">
           <div class="action-dot" style="background:${item.dotColor}"></div>
           <div class="action-body">
-            <div class="action-title">${item.title}${scoreBadge}${contactTag}${chevron}</div>
+            <div class="action-title">${item.title}${scoreBadge}${resumeTag}${contactTag}${chevron}</div>
             <div class="action-sub">${esc(item.description)}${daysTag}</div>
           </div>
           <div class="action-buttons" style="position:relative" onclick="event.stopPropagation()">${buttons}</div>
@@ -2581,7 +2655,7 @@ function renderPipeline() {
               <div style="flex:1;min-width:220px;background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:10px;padding:14px">
                 <h4 style="font-size:11px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">Linked Contacts (${jobContacts.length})</h4>
                 ${jobContacts.length > 0
-                  ? jobContacts.map(c => `<div style="font-size:12px;margin-bottom:6px"><strong style="color:var(--text)">${esc(c.name)}</strong> <span style="color:var(--dim)">${esc(c.title || '')}</span>${c.relationship_type ? ` <span class="relationship-badge rel-${c.relationship_type}" style="font-size:8px">${c.relationship_type.replace(/_/g, ' ')}</span>` : ''}</div>`).join('')
+                  ? jobContacts.map(c => `<div style="font-size:12px;margin-bottom:6px">${c.linkedin_url ? `<a href="${esc(c.linkedin_url)}" target="_blank" style="color:var(--cyan);text-decoration:none;font-weight:600" onclick="event.stopPropagation()">${esc(c.name)}</a>` : `<strong style="color:var(--text)">${esc(c.name)}</strong>`} <span style="color:var(--dim)">${esc(c.title || '')}</span>${c.relationship_type ? ` <span class="relationship-badge rel-${c.relationship_type}" style="font-size:8px">${c.relationship_type.replace(/_/g, ' ')}</span>` : ''}${c.email ? `<div style="margin-top:2px"><a href="mailto:${esc(c.email)}" style="font-size:11px;color:var(--green);text-decoration:none;opacity:.85" onclick="event.stopPropagation()">${esc(c.email)}</a></div>` : ''}</div>`).join('')
                   : '<div style="font-size:12px;color:var(--dim)">No contacts linked to this company.</div>'
                 }
               </div>
@@ -2600,7 +2674,14 @@ function renderPipeline() {
                     <div style="font-size:12px;color:var(--dim);font-style:italic;max-height:80px;overflow:hidden;text-overflow:ellipsis">"${esc(job.outreach_draft).substring(0, 200)}${job.outreach_draft.length > 200 ? '...' : ''}"</div>
                     <button class="btn btn-ghost btn-sm" style="margin-top:6px" onclick="event.stopPropagation();showDraftByKey('${cacheDraft(job.outreach_draft)}')">View Full Draft</button>
                   </div>` : ''}
+                ${job.cover_letter ? `
+                  <div style="margin-top:10px">
+                    <h4 style="font-size:11px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Cover Letter</h4>
+                    <div style="font-size:12px;color:var(--dim);font-style:italic;max-height:80px;overflow:hidden;text-overflow:ellipsis">"${esc(job.cover_letter).substring(0, 200)}${job.cover_letter.length > 200 ? '...' : ''}"</div>
+                    <button class="btn btn-ghost btn-sm" style="margin-top:6px" onclick="event.stopPropagation();showCoverLetterModal('${cacheDraft(job.cover_letter)}')">View Cover Letter</button>
+                  </div>` : ''}
               </div>
+              ${renderApplyButtons(job)}
               <div style="width:100%;display:flex;gap:8px;flex-wrap:wrap;padding-top:4px">
                 ${job.status === 'new' || job.status === 'researching' ? `<button class="btn btn-success btn-sm" onclick="event.stopPropagation();updateJobStatus('${job.id}','applied')">Mark Applied</button>` : ''}
                 ${job.status === 'applied' ? `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();updateJobStatus('${job.id}','interviewing')">Move to Interviewing</button>` : ''}
@@ -2704,6 +2785,7 @@ function renderNetwork() {
               </div>`).join('')}
           ` : ''}
           ${c.linkedin_url ? `<a href="${esc(c.linkedin_url)}" target="_blank" style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--cyan);text-decoration:none;margin-top:8px">&#128279; LinkedIn Profile</a>` : ''}
+          ${c.email ? `<div style="margin-top:4px"><a href="mailto:${esc(c.email)}" style="font-size:12px;color:var(--green);text-decoration:none" onclick="event.stopPropagation()">${esc(c.email)}</a></div>` : ''}
         </div>
       </div>`;
   }).join('');
@@ -3576,11 +3658,52 @@ async function completeOnboarding() {
 // UTILITIES
 // ============================================
 
+function addBusinessDaysJS(startDate, days) {
+  const result = new Date(startDate);
+  let added = 0;
+  while (added < days) {
+    result.setDate(result.getDate() + 1);
+    const dow = result.getDay();
+    if (dow !== 0 && dow !== 6) added++;
+  }
+  return result;
+}
+
 function esc(str) {
   if (!str) return '';
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
+}
+
+function renderApplyButtons(job) {
+  let html = '';
+  const links = job.apply_links && Array.isArray(job.apply_links) && job.apply_links.length > 0
+    ? job.apply_links
+    : (job.url ? [{ label: detectApplyLabel(job.url), url: job.url, source: 'unknown' }] : []);
+
+  if (links.length === 0) return '';
+
+  html += '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">';
+  for (const link of links) {
+    html += `<a href="${esc(link.url)}" target="_blank" onclick="event.stopPropagation()" style="display:inline-flex;align-items:center;gap:4px;padding:6px 14px;font-size:11px;font-weight:600;color:var(--cyan);background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);border-radius:6px;text-decoration:none;cursor:pointer;transition:all .2s" onmouseover="this.style.background='rgba(6,182,212,.15)'" onmouseout="this.style.background='rgba(6,182,212,.08)'">${esc(link.label || 'Apply')}</a>`;
+  }
+  html += '</div>';
+  return html;
+}
+
+function detectApplyLabel(url) {
+  if (!url) return 'Apply';
+  const u = url.toLowerCase();
+  if (u.includes('linkedin.com/jobs')) return 'Apply on LinkedIn';
+  if (u.includes('indeed.com')) return 'Apply on Indeed';
+  if (u.includes('greenhouse.io')) return 'Apply on Greenhouse';
+  if (u.includes('lever.co')) return 'Apply on Lever';
+  if (u.includes('myworkdayjobs.com')) return 'Apply on Workday';
+  if (u.includes('ashbyhq.com')) return 'Apply Direct';
+  if (u.includes('builtin.com')) return 'Apply on Built In';
+  if (u.includes('jobgether.com')) return 'Apply Now';
+  return 'Apply Direct';
 }
 
 function formatStatus(status) {
