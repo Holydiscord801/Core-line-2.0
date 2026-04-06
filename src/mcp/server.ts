@@ -31,6 +31,8 @@ import type {
   PostingStatus,
 } from '../types/index.js';
 import crypto from 'crypto';
+import { fetchJobDescription } from '../utils/jd-scraper.js';
+import { generateCoverLetterText } from '../utils/cover-letter-generator.js';
 
 // ============================================
 // Authentication
@@ -544,6 +546,42 @@ const tools: Tool[] = [
       required: ['jobs'],
     },
   },
+  {
+    name: 'fetch_jd',
+    description: 'Fetches the full job description from a job posting URL and stores it in the database. Supports Greenhouse, Lever, Ashby, BambooHR, Built In, Workday, and generic pages. After fetching, auto-generates a template cover letter if the user has a resume on file. Use this for any 70%+ job missing a job description.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        job_id: {
+          type: 'string',
+          description: 'UUID of the job to fetch the JD for. The job must have a URL.',
+        },
+      },
+      required: ['job_id'],
+    },
+  },
+  {
+    name: 'batch_process_jobs',
+    description: 'Processes all high-scoring jobs (default 70%+) that are missing job descriptions or cover letters. Fetches JDs from posting URLs and generates template cover letters. Use after bulk_import_jobs() or to backfill existing pipeline jobs.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        min_fit_score: {
+          type: 'number',
+          description: 'Minimum fit score threshold. Default 70.',
+        },
+        fetch_jds: {
+          type: 'boolean',
+          description: 'Whether to fetch missing JDs. Default true.',
+        },
+        generate_cover_letters: {
+          type: 'boolean',
+          description: 'Whether to generate missing cover letters. Default true.',
+        },
+      },
+      required: [],
+    },
+  },
 ];
 
 // ============================================
@@ -1019,7 +1057,30 @@ When generating a battle plan, structure it as:
 - Jobs scoring 70%+ get automatic deep research + outreach
 - Always log outreach after sending messages
 - Check for email responses every 2 hours during work hours
-- Follow-up escalation: 3 days, then 5 days, then escalate to another contact, then archive at 14 days`;
+- Follow-up escalation: 3 days, then 5 days, then escalate to another contact, then archive at 14 days
+
+## JD & Cover Letter Pipeline (70%+ Jobs)
+When a job scores 70%+, run this pipeline:
+1. fetch_jd(job_id) — Pull the full job description from the posting URL
+2. generate_cover_letter(job_id) — Create an AI-quality cover letter using JD + user profile
+3. generate_outreach(job_id, contact_id) — Draft outreach to hiring manager/recruiter
+4. The user sees a complete card: JD, cover letter, apply links, outreach draft
+
+If fetch_jd() fails (LinkedIn/Indeed block scraping), note it and generate the cover letter from the job title/company context.
+Use batch_process_jobs() after bulk_import_jobs() to process all 70%+ jobs at once.
+
+## New User Onboarding
+1. get_profile() — if resume_text is empty, ask the user to share their resume/career highlights
+2. Run job search based on preferences
+3. Score all results with score_job()
+4. batch_process_jobs() — auto-fetch JDs and generate cover letters for all 70%+ jobs
+5. Generate outreach for top 3-5 matches
+The user should see complete cards (JD, cover letter, apply links, outreach draft) from day one.
+
+## Button Behaviors
+- Apply button = opens job URL only. NEVER changes status.
+- Mark Applied / Done = changes status to 'applied', records applied_at, starts follow-up chain.
+- Follow-up chain: 3 biz days → 5 biz days → escalate contact → auto-archive at 14 days.`;
 
   return {
     instructions,
@@ -1552,6 +1613,161 @@ async function bulkImportJobs(params: BulkImportJobsParams): Promise<object> {
   };
 }
 
+async function fetchJd(jobId: string): Promise<object> {
+  const userId = requireAuth();
+
+  const { data: job } = await supabase
+    .from('v2_jobs')
+    .select('*')
+    .eq('id', jobId)
+    .eq('user_id', userId)
+    .single();
+
+  if (!job) throw new Error('Job not found');
+  if (!job.url) throw new Error('Job has no URL to fetch from');
+
+  const result = await fetchJobDescription(job.url);
+
+  if (!result.text) {
+    return {
+      job_id: jobId,
+      success: false,
+      source: result.source,
+      error: result.error || 'Could not extract job description',
+      hint: result.source === 'linkedin' || result.source === 'indeed'
+        ? 'This job board blocks automated fetching. Copy the JD text and paste it manually via update_job_status or PATCH /api/jobs/:id.'
+        : 'Try checking the URL is still active. You can also paste the JD manually.',
+    };
+  }
+
+  // Store JD
+  await supabase
+    .from('v2_jobs')
+    .update({ job_description: result.text })
+    .eq('id', jobId)
+    .eq('user_id', userId);
+
+  // Auto-generate template cover letter if resume exists
+  let coverLetterGenerated = false;
+  if (!job.cover_letter) {
+    try {
+      const profile = await getProfile();
+      if (profile.resume_text) {
+        const cl = generateCoverLetterText(
+          { full_name: profile.full_name, resume_text: profile.resume_text },
+          { title: job.title, company: job.company, job_description: result.text, location: job.location, fit_score: job.fit_score }
+        );
+        await supabase
+          .from('v2_jobs')
+          .update({ cover_letter: cl })
+          .eq('id', jobId)
+          .eq('user_id', userId);
+        coverLetterGenerated = true;
+      }
+    } catch {
+      // Non-fatal — template cover letter is a nice-to-have
+    }
+  }
+
+  return {
+    job_id: jobId,
+    success: true,
+    source: result.source,
+    jd_length: result.text.length,
+    jd_preview: result.text.substring(0, 300) + '...',
+    cover_letter_generated: coverLetterGenerated,
+    next_step: coverLetterGenerated
+      ? 'JD fetched and template cover letter generated. Use generate_cover_letter() for an AI-quality letter instead.'
+      : 'JD stored. Call generate_cover_letter() to create a tailored cover letter.',
+  };
+}
+
+async function batchProcessJobs(params: { min_fit_score?: number; fetch_jds?: boolean; generate_cover_letters?: boolean }): Promise<object> {
+  const userId = requireAuth();
+  const minScore = params.min_fit_score ?? 70;
+  const doFetchJds = params.fetch_jds !== false;
+  const doGenCls = params.generate_cover_letters !== false;
+
+  const results = {
+    jds_fetched: 0,
+    jds_failed: 0,
+    cover_letters_generated: 0,
+    details: [] as Array<{ job_id: string; company: string; status: string; error?: string }>,
+  };
+
+  const profile = await getProfile();
+
+  if (doFetchJds) {
+    const { data: jobs } = await supabase
+      .from('v2_jobs')
+      .select('id, title, company, url, cover_letter, location, fit_score')
+      .eq('user_id', userId)
+      .gte('fit_score', minScore)
+      .is('job_description', null)
+      .not('url', 'is', null);
+
+    for (const job of jobs || []) {
+      try {
+        const jdResult = await fetchJobDescription(job.url!);
+        if (jdResult.text) {
+          const updates: Record<string, unknown> = { job_description: jdResult.text };
+
+          if (doGenCls && !job.cover_letter && profile.resume_text) {
+            updates.cover_letter = generateCoverLetterText(
+              { full_name: profile.full_name, resume_text: profile.resume_text },
+              { title: job.title, company: job.company, job_description: jdResult.text, location: job.location, fit_score: job.fit_score }
+            );
+            results.cover_letters_generated++;
+          }
+
+          await supabase.from('v2_jobs').update(updates).eq('id', job.id).eq('user_id', userId);
+          results.jds_fetched++;
+          results.details.push({ job_id: job.id, company: job.company, status: 'jd_fetched' });
+        } else {
+          results.jds_failed++;
+          results.details.push({ job_id: job.id, company: job.company, status: 'jd_failed', error: jdResult.error });
+        }
+        await new Promise(r => setTimeout(r, 600)); // Rate limit
+      } catch (err: any) {
+        results.jds_failed++;
+        results.details.push({ job_id: job.id, company: job.company, status: 'error', error: err.message });
+      }
+    }
+  }
+
+  // Generate cover letters for jobs that already have JDs but no cover letter
+  if (doGenCls && profile.resume_text) {
+    const { data: clJobs } = await supabase
+      .from('v2_jobs')
+      .select('id, title, company, job_description, location, fit_score')
+      .eq('user_id', userId)
+      .gte('fit_score', minScore)
+      .not('job_description', 'is', null)
+      .is('cover_letter', null);
+
+    for (const job of clJobs || []) {
+      try {
+        const cl = generateCoverLetterText(
+          { full_name: profile.full_name, resume_text: profile.resume_text },
+          { title: job.title, company: job.company, job_description: job.job_description, location: job.location, fit_score: job.fit_score }
+        );
+        await supabase.from('v2_jobs').update({ cover_letter: cl }).eq('id', job.id).eq('user_id', userId);
+        results.cover_letters_generated++;
+      } catch {
+        // Non-fatal
+      }
+    }
+  }
+
+  return {
+    ...results,
+    summary: `Processed: ${results.jds_fetched} JDs fetched, ${results.jds_failed} failed, ${results.cover_letters_generated} cover letters generated.`,
+    next_steps: results.jds_fetched > 0 || results.cover_letters_generated > 0
+      ? ['Run get_jobs() to see updated jobs', 'Use generate_cover_letter() for AI-quality letters on your top picks']
+      : ['All qualifying jobs already have JDs and cover letters, or none met the score threshold.'],
+  };
+}
+
 // ============================================
 // Server Setup
 // ============================================
@@ -1733,6 +1949,18 @@ export async function createMCPServer(): Promise<Server> {
         case 'bulk_import_jobs':
           result = await bulkImportJobs({
             jobs: args?.jobs as BulkImportJobsParams['jobs'],
+          });
+          break;
+
+        case 'fetch_jd':
+          result = await fetchJd(args?.job_id as string);
+          break;
+
+        case 'batch_process_jobs':
+          result = await batchProcessJobs({
+            min_fit_score: args?.min_fit_score as number,
+            fetch_jds: args?.fetch_jds as boolean,
+            generate_cover_letters: args?.generate_cover_letters as boolean,
           });
           break;
 

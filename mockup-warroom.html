@@ -1762,16 +1762,50 @@ function renderCardDetail(job) {
     html += `<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">`;
     html += `<h4 style="font-size:11px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Cover Letter</h4>`;
     html += `<div style="font-size:12px;color:var(--dim);font-style:italic;max-height:60px;overflow:hidden">"${esc(job.cover_letter).substring(0, 150)}${job.cover_letter.length > 150 ? '...' : ''}"</div>`;
-    html += `<button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="event.stopPropagation();showCoverLetterModal('${cacheDraft(job.cover_letter)}')">View Cover Letter</button>`;
-    html += `</div>`;
+    html += `<div style="display:flex;gap:6px;margin-top:8px">`;
+    html += `<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();showCoverLetterModal('${cacheDraft(job.cover_letter)}','${job.id}')">View Cover Letter</button>`;
+    html += `<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();regenerateCoverLetter('${job.id}')" style="color:var(--accent)">Regenerate</button>`;
+    html += `</div></div>`;
   }
 
   html += `</div>`;
+
+  // Job Description section (full-width, collapsible)
+  if (job.job_description) {
+    html += `<div style="background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:10px;padding:14px;margin-top:12px">`;
+    html += `<div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="event.stopPropagation();toggleJdSection('${job.id}')">`;
+    html += `<h4 style="font-size:11px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin:0">Job Description</h4>`;
+    html += `<span style="font-size:11px;color:var(--accent)" id="jd-toggle-${job.id}">Show</span>`;
+    html += `</div>`;
+    html += `<div id="jd-content-${job.id}" style="display:none;margin-top:10px;font-size:12px;line-height:1.7;color:var(--dim);max-height:300px;overflow-y:auto;white-space:pre-wrap">${esc(job.job_description)}</div>`;
+    html += `</div>`;
+  }
+
+  // Status indicators
+  html += `<div style="display:flex;gap:12px;margin-top:10px;flex-wrap:wrap">`;
+  if (job.job_description) {
+    html += `<span style="font-size:11px;color:var(--green);font-weight:600">JD fetched ✓</span>`;
+  } else if (job.url) {
+    html += `<span style="font-size:11px;color:var(--dim)">No JD — <a href="#" onclick="event.preventDefault();event.stopPropagation();fetchJobJd('${job.id}')" style="color:var(--accent);text-decoration:none">fetch now</a></span>`;
+  }
+  if (job.cover_letter) {
+    html += `<span style="font-size:11px;color:var(--green);font-weight:600">Cover letter ready ✓</span>`;
+  } else if (job.job_description) {
+    html += `<span style="font-size:11px;color:var(--dim)">No cover letter — <a href="#" onclick="event.preventDefault();event.stopPropagation();regenerateCoverLetter('${job.id}')" style="color:var(--accent);text-decoration:none">generate</a></span>`;
+  }
+  html += `</div>`;
+
   html += `</div>`; // end row
 
   // Actions
   html += `<div class="card-detail-actions">`;
   html += renderApplyButtons(job);
+  if (!job.job_description && job.url) {
+    html += `<button class="btn btn-ghost" onclick="event.stopPropagation();fetchJobJd('${job.id}')" style="color:var(--cyan)">Fetch JD</button>`;
+  }
+  if (job.job_description && !job.cover_letter) {
+    html += `<button class="btn btn-ghost" onclick="event.stopPropagation();regenerateCoverLetter('${job.id}')" style="color:var(--accent)">Generate Cover Letter</button>`;
+  }
   if (job.status === 'new' || job.status === 'researching') {
     html += `<button class="btn btn-success" onclick="event.stopPropagation();updateJobStatus('${job.id}','applied')">Mark Applied</button>`;
   }
@@ -1797,6 +1831,53 @@ function expandCard(jobId) {
 function collapseCard() {
   expandedCardId = null;
   renderBattleGrid();
+}
+
+async function fetchJobJd(jobId) {
+  showToast('Fetching job description...', 'info');
+  try {
+    const result = await api(`/jobs/${jobId}/fetch-jd`, { method: 'POST' });
+    if (result.jd_fetched) {
+      showToast(`JD fetched from ${result.jd_source || 'web'}${result.cover_letter_generated ? ' + cover letter generated' : ''}`, 'success');
+    } else {
+      showToast('Could not fetch JD: ' + (result.error || 'unknown error'), 'error');
+    }
+    const jobsRes = await api('/jobs?limit=200');
+    cachedJobs = jobsRes?.jobs || [];
+    expandedCardId = jobId;
+    updateSideBadges();
+    refreshCurrentView();
+  } catch (err) {
+    showToast('Failed to fetch JD: ' + err.message, 'error');
+  }
+}
+
+async function regenerateCoverLetter(jobId) {
+  showToast('Generating cover letter...', 'info');
+  try {
+    const result = await api(`/jobs/${jobId}/generate-cover-letter`, { method: 'POST' });
+    showToast('Cover letter generated', 'success');
+    const jobsRes = await api('/jobs?limit=200');
+    cachedJobs = jobsRes?.jobs || [];
+    expandedCardId = jobId;
+    updateSideBadges();
+    refreshCurrentView();
+  } catch (err) {
+    showToast('Failed to generate cover letter: ' + err.message, 'error');
+  }
+}
+
+function toggleJdSection(jobId) {
+  const content = document.getElementById('jd-content-' + jobId);
+  const toggle = document.getElementById('jd-toggle-' + jobId);
+  if (!content || !toggle) return;
+  if (content.style.display === 'none') {
+    content.style.display = 'block';
+    toggle.textContent = 'Hide';
+  } else {
+    content.style.display = 'none';
+    toggle.textContent = 'Show';
+  }
 }
 
 async function updateJobStatus(jobId, status) {
@@ -2187,7 +2268,7 @@ function showDraftByKey(key) {
   showDraftModal(_draftCache[key] || '(Draft not found)');
 }
 
-function showCoverLetterModal(draftKey) {
+function showCoverLetterModal(draftKey, jobId) {
   const text = _draftCache[draftKey] || '';
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
@@ -2201,6 +2282,7 @@ function showCoverLetterModal(draftKey) {
     <div style="background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:12px;padding:20px;font-size:13px;line-height:1.8;color:var(--dim);white-space:pre-wrap;max-height:400px;overflow-y:auto">${esc(text)}</div>
     <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end">
       <button class="btn btn-ghost" id="_clCopyBtn">Copy</button>
+      ${jobId ? '<button class="btn btn-ghost" id="_clRegenBtn" style="color:var(--accent)">Regenerate</button>' : ''}
       <button class="btn btn-primary" onclick="this.closest('.modal-overlay').remove()">Close</button>
     </div>`;
   overlay.appendChild(modalEl);
@@ -2209,6 +2291,12 @@ function showCoverLetterModal(draftKey) {
     navigator.clipboard.writeText(text);
     showToast('Cover letter copied', 'success');
   };
+  if (jobId) {
+    document.getElementById('_clRegenBtn').onclick = () => {
+      overlay.remove();
+      regenerateCoverLetter(jobId);
+    };
+  }
 }
 
 function showDraftModal(draft) {
@@ -2704,8 +2792,12 @@ function renderPipeline() {
                   <div style="margin-top:10px">
                     <h4 style="font-size:11px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Cover Letter</h4>
                     <div style="font-size:12px;color:var(--dim);font-style:italic;max-height:80px;overflow:hidden;text-overflow:ellipsis">"${esc(job.cover_letter).substring(0, 200)}${job.cover_letter.length > 200 ? '...' : ''}"</div>
-                    <button class="btn btn-ghost btn-sm" style="margin-top:6px" onclick="event.stopPropagation();showCoverLetterModal('${cacheDraft(job.cover_letter)}')">View Cover Letter</button>
+                    <div style="display:flex;gap:6px;margin-top:6px">
+                      <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();showCoverLetterModal('${cacheDraft(job.cover_letter)}','${job.id}')">View Cover Letter</button>
+                      <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();regenerateCoverLetter('${job.id}')" style="color:var(--accent)">Regenerate</button>
+                    </div>
                   </div>` : ''}
+                ${!job.job_description && job.url ? `<div style="margin-top:6px"><button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();fetchJobJd('${job.id}')" style="color:var(--cyan)">Fetch JD</button></div>` : ''}
               </div>
               ${renderApplyButtons(job)}
               <div style="width:100%;display:flex;gap:8px;flex-wrap:wrap;padding-top:4px">
