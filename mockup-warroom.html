@@ -1458,7 +1458,7 @@ async function loadAllData() {
       api('/contacts'),
       api('/summary'),
     ]);
-    cachedJobs = jobsRes?.jobs || [];
+    cachedJobs = deduplicateJobs(jobsRes?.jobs || []);
     cachedContacts = deduplicateContacts(contactsRes?.contacts || []);
     cachedSummary = summaryRes || null;
 
@@ -1469,6 +1469,28 @@ async function loadAllData() {
       showToast('Failed to load data: ' + err.message, 'error');
     }
   }
+}
+
+// Deduplicate jobs array: by ID first, then by normalized company+title
+function deduplicateJobs(jobs) {
+  const byId = new Map();
+  jobs.forEach(j => {
+    if (!byId.has(j.id)) byId.set(j.id, j);
+  });
+  const byKey = new Map();
+  for (const j of byId.values()) {
+    const key = (j.company || '').toLowerCase().trim() + '||' + (j.title || '').toLowerCase().trim();
+    if (!byKey.has(key)) {
+      byKey.set(key, j);
+    } else {
+      // Keep the one with more data (apply_links, url, etc)
+      const existing = byKey.get(key);
+      const existingScore = (existing.apply_links?.length || 0) + (existing.url ? 1 : 0) + (existing.cover_letter ? 1 : 0);
+      const newScore = (j.apply_links?.length || 0) + (j.url ? 1 : 0) + (j.cover_letter ? 1 : 0);
+      if (newScore > existingScore) byKey.set(key, j);
+    }
+  }
+  return Array.from(byKey.values());
 }
 
 // Normalize a contact name for dedup: lowercase, collapse whitespace, strip accents

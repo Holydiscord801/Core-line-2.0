@@ -898,13 +898,31 @@ async function main() {
 
     console.log(`  [${cardNum}/${cards.length}] Processing: ${card.company} - ${card.role}`);
 
-    // UPSERT: Check if job already exists for this company
-    const { data: existingJob } = await supabase
+    // UPSERT: Check if job already exists for this company+title (exact) or company (fuzzy)
+    // First try exact match on company+title, then fall back to company-only with limit(1)
+    let existingJob: { id: string } | null = null;
+    const { data: exactMatch } = await supabase
       .from('v2_jobs')
       .select('id')
       .eq('user_id', userId)
       .ilike('company', card.company)
+      .ilike('title', card.role)
+      .limit(1)
       .maybeSingle();
+
+    if (exactMatch) {
+      existingJob = exactMatch;
+    } else {
+      // Fall back to company-only match, take the first one
+      const { data: companyMatch } = await supabase
+        .from('v2_jobs')
+        .select('id')
+        .eq('user_id', userId)
+        .ilike('company', card.company)
+        .limit(1);
+
+      existingJob = companyMatch && companyMatch.length > 0 ? companyMatch[0] : null;
+    }
 
     let jobId: string;
 
@@ -990,14 +1008,15 @@ async function main() {
     for (const contact of card.contacts) {
       if (!contact.name || contact.name.length < 2) continue;
 
-      // Check if contact already exists
-      const { data: existingContact } = await supabase
+      // Check if contact already exists (use limit(1) to avoid maybeSingle errors on dupes)
+      const { data: contactMatches } = await supabase
         .from('v2_contacts')
         .select('id, linkedin_url, email')
         .eq('user_id', userId)
         .ilike('name', contact.name)
         .ilike('company', card.company)
-        .maybeSingle();
+        .limit(1);
+      const existingContact = contactMatches && contactMatches.length > 0 ? contactMatches[0] : null;
 
       let contactId: string;
 
@@ -1055,12 +1074,13 @@ async function main() {
       }
 
       // Link contact to job (check if link already exists)
-      const { data: existingLink } = await supabase
+      const { data: linkMatches } = await supabase
         .from('v2_job_contacts')
         .select('id')
         .eq('job_id', jobId)
         .eq('contact_id', contactId)
-        .maybeSingle();
+        .limit(1);
+      const existingLink = linkMatches && linkMatches.length > 0 ? linkMatches[0] : null;
 
       if (!existingLink) {
         const { error: linkError } = await supabase
