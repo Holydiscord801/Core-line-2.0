@@ -12,6 +12,7 @@ import pipelineRouter from './routes/pipeline.js';
 import keysRouter from './routes/keys.js';
 import usersRouter from './routes/users.js';
 import activityRouter from './routes/activity.js';
+import hotSignalsRouter from './routes/hot-signals.js';
 
 export function createApp() {
   const app = express();
@@ -38,6 +39,7 @@ export function createApp() {
   app.use('/api/keys', keysRouter);
   app.use('/api/users', usersRouter);
   app.use('/api/activity', activityRouter);
+  app.use('/api/hot-signals', hotSignalsRouter);
 
   // 404 handler
   app.use((_req, res) => {

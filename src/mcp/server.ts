@@ -582,6 +582,115 @@ const tools: Tool[] = [
       required: [],
     },
   },
+  {
+    name: 'create_hot_signal',
+    description: 'Writes a new urgent finding to the hot signals table. Use any time you discover something too important to wait for the morning summary: a LinkedIn accept from a target company CEO, an email bounce, a positive reply. Every signal MUST include a recommended action and a pre-drafted message or next step. Never create a hot signal that is just an FYI.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        signal_type: {
+          type: 'string',
+          enum: ['linkedin_accept', 'linkedin_dm', 'linkedin_inmail', 'inbox_reply_positive', 'inbox_reply_negative', 'inbox_reply_neutral', 'email_bounce', 'sent_outreach_captured', 'archived_reply_found', 'profile_view_spike', 'other'],
+          description: 'Classification of the signal.',
+        },
+        severity: {
+          type: 'string',
+          enum: ['hot', 'warm', 'info'],
+          description: 'hot = act today, warm = act this week, info = background context. Default hot.',
+        },
+        summary: {
+          type: 'string',
+          description: 'One-line plain-English description of what happened. No em dashes. Example: "Dan Lorenc (CEO of Chainguard) accepted your LinkedIn invite 45 minutes after you applied."',
+        },
+        ai_recommendation: {
+          type: 'string',
+          description: 'The full pre-drafted message or next action. For LinkedIn DMs and emails, include the complete message body. No em dashes.',
+        },
+        recommended_action_type: {
+          type: 'string',
+          description: 'Machine-readable action type. Examples: send_linkedin_dm, send_email, open_link, update_contact.',
+        },
+        recommended_action_payload: {
+          type: 'object',
+          description: 'Structured payload for the action: { channel, recipient, recipient_url, company, body } for DMs; { to, subject, body } for email.',
+        },
+        related_job_id: {
+          type: 'string',
+          description: 'UUID of the related v2_jobs record, if applicable.',
+        },
+        related_contact_id: {
+          type: 'string',
+          description: 'UUID of the related v2_contacts record, if applicable.',
+        },
+        source_email_id: {
+          type: 'string',
+          description: 'Gmail message ID if the signal was discovered via email.',
+        },
+        source_url: {
+          type: 'string',
+          description: 'Source URL (e.g., LinkedIn profile link).',
+        },
+      },
+      required: ['signal_type', 'summary'],
+    },
+  },
+  {
+    name: 'get_hot_signals',
+    description: 'Returns hot signals for the current user. Defaults to status=new (unacknowledged). Call this at the start of every session to surface anything urgent that came in since the last session.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        status: {
+          type: 'string',
+          enum: ['new', 'user_acknowledged', 'actioned', 'dismissed'],
+          description: 'Filter by status. Defaults to new.',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'acknowledge_hot_signal',
+    description: 'Marks a hot signal as user_acknowledged. Use after presenting a signal to the user so they know it has been seen.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: {
+          type: 'string',
+          description: 'UUID of the hot signal to acknowledge.',
+        },
+      },
+      required: ['id'],
+    },
+  },
+  {
+    name: 'action_hot_signal',
+    description: 'Marks a hot signal as actioned (the recommended action was taken). Use after sending the LinkedIn DM, sending the email, or completing whatever the recommended_action was.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: {
+          type: 'string',
+          description: 'UUID of the hot signal to mark as actioned.',
+        },
+      },
+      required: ['id'],
+    },
+  },
+  {
+    name: 'dismiss_hot_signal',
+    description: 'Marks a hot signal as dismissed (not acting on it). Use when the user decides not to act or the signal is no longer relevant.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: {
+          type: 'string',
+          description: 'UUID of the hot signal to dismiss.',
+        },
+      },
+      required: ['id'],
+    },
+  },
 ];
 
 // ============================================
@@ -1080,7 +1189,26 @@ The user should see complete cards (JD, cover letter, apply links, outreach draf
 ## Button Behaviors
 - Apply button = opens job URL only. NEVER changes status.
 - Mark Applied / Done = changes status to 'applied', records applied_at, starts follow-up chain.
-- Follow-up chain: 3 biz days → 5 biz days → escalate contact → auto-archive at 14 days.`;
+- Follow-up chain: 3 biz days → 5 biz days → escalate contact → auto-archive at 14 days.
+
+## Hot Signals
+Hot signals are urgent findings too important to wait for the morning summary.
+
+Tools:
+- create_hot_signal(signal_type, severity, summary, ai_recommendation, recommended_action_type, recommended_action_payload, related_job_id?, related_contact_id?, source_email_id?, source_url?) -- write a new signal
+- get_hot_signals(status?) -- read signals, defaults to status=new
+- acknowledge_hot_signal(id) -- mark seen
+- action_hot_signal(id) -- mark completed
+- dismiss_hot_signal(id) -- mark not acting
+
+Signal types: linkedin_accept, linkedin_dm, linkedin_inmail, inbox_reply_positive, inbox_reply_negative, inbox_reply_neutral, email_bounce, sent_outreach_captured, archived_reply_found, profile_view_spike, other
+
+Rules:
+1. Every two hours during work hours (8am-8pm), run the email and social signal scans. Any urgent finding goes to create_hot_signal with a pre-drafted next action.
+2. Never create a hot signal without a recommended action. No FYI-only signals.
+3. Every hot signal must include ai_recommendation with a complete pre-drafted message body (no em dashes anywhere in the text).
+4. Examples that trigger a hot signal: CEO accepts LinkedIn invite on application day, email bounces to a contact, positive reply arrives in inbox at 2pm, InMail from a recruiter referencing a specific role.
+5. Call get_hot_signals() at the start of every session to surface anything that came in since the last session.`;
 
   return {
     instructions,
@@ -1769,6 +1897,111 @@ async function batchProcessJobs(params: { min_fit_score?: number; fetch_jds?: bo
 }
 
 // ============================================
+// Hot Signals
+// ============================================
+
+async function createHotSignal(params: {
+  signal_type: string;
+  severity?: string;
+  summary: string;
+  ai_recommendation?: string;
+  recommended_action_type?: string;
+  recommended_action_payload?: Record<string, unknown>;
+  related_job_id?: string;
+  related_contact_id?: string;
+  source_email_id?: string;
+  source_url?: string;
+}): Promise<object> {
+  const userId = requireAuth();
+
+  const { data, error } = await supabase
+    .from('v2_hot_signals')
+    .insert({
+      user_id: userId,
+      signal_type: params.signal_type,
+      severity: params.severity || 'hot',
+      summary: params.summary,
+      ai_recommendation: params.ai_recommendation,
+      recommended_action_type: params.recommended_action_type,
+      recommended_action_payload: params.recommended_action_payload,
+      related_job_id: params.related_job_id || null,
+      related_contact_id: params.related_contact_id || null,
+      source_email_id: params.source_email_id,
+      source_url: params.source_url,
+      status: 'new',
+    })
+    .select()
+    .single();
+
+  if (error) throw new Error(`Error creating hot signal: ${error.message}`);
+  return data;
+}
+
+async function getHotSignals(status?: string): Promise<object[]> {
+  const userId = requireAuth();
+
+  const effectiveStatus = status || 'new';
+
+  const { data, error } = await supabase
+    .from('v2_hot_signals')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('status', effectiveStatus)
+    .order('created_at', { ascending: false });
+
+  if (error) throw new Error(`Error fetching hot signals: ${error.message}`);
+  return data || [];
+}
+
+async function acknowledgeHotSignal(id: string): Promise<object> {
+  const userId = requireAuth();
+
+  const { data, error } = await supabase
+    .from('v2_hot_signals')
+    .update({ status: 'user_acknowledged', acknowledged_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('user_id', userId)
+    .select()
+    .single();
+
+  if (error) throw new Error(`Error acknowledging hot signal: ${error.message}`);
+  if (!data) throw new Error('Hot signal not found');
+  return data;
+}
+
+async function actionHotSignal(id: string): Promise<object> {
+  const userId = requireAuth();
+
+  const { data, error } = await supabase
+    .from('v2_hot_signals')
+    .update({ status: 'actioned', actioned_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('user_id', userId)
+    .select()
+    .single();
+
+  if (error) throw new Error(`Error actioning hot signal: ${error.message}`);
+  if (!data) throw new Error('Hot signal not found');
+  return data;
+}
+
+async function dismissHotSignal(id: string): Promise<object> {
+  const userId = requireAuth();
+
+  const { data, error } = await supabase
+    .from('v2_hot_signals')
+    .update({ status: 'dismissed', dismissed_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('user_id', userId)
+    .select()
+    .single();
+
+  if (error) throw new Error(`Error dismissing hot signal: ${error.message}`);
+  if (!data) throw new Error('Hot signal not found');
+  return data;
+}
+
+// ============================================
 // Server Setup
 // ============================================
 
@@ -1964,6 +2197,37 @@ export async function createMCPServer(): Promise<Server> {
             fetch_jds: args?.fetch_jds as boolean,
             generate_cover_letters: args?.generate_cover_letters as boolean,
           });
+          break;
+
+        case 'create_hot_signal':
+          result = await createHotSignal({
+            signal_type: args?.signal_type as string,
+            severity: args?.severity as string,
+            summary: args?.summary as string,
+            ai_recommendation: args?.ai_recommendation as string,
+            recommended_action_type: args?.recommended_action_type as string,
+            recommended_action_payload: args?.recommended_action_payload as Record<string, unknown>,
+            related_job_id: args?.related_job_id as string,
+            related_contact_id: args?.related_contact_id as string,
+            source_email_id: args?.source_email_id as string,
+            source_url: args?.source_url as string,
+          });
+          break;
+
+        case 'get_hot_signals':
+          result = await getHotSignals(args?.status as string);
+          break;
+
+        case 'acknowledge_hot_signal':
+          result = await acknowledgeHotSignal(args?.id as string);
+          break;
+
+        case 'action_hot_signal':
+          result = await actionHotSignal(args?.id as string);
+          break;
+
+        case 'dismiss_hot_signal':
+          result = await dismissHotSignal(args?.id as string);
           break;
 
         default:

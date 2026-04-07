@@ -416,6 +416,95 @@ body::before{content:'';position:fixed;top:-200px;left:50%;transform:translateX(
   .main{padding:16px}
   .ai-options{grid-template-columns:1fr 1fr}
 }
+
+/* Hot Signals Banner */
+.hot-banner{
+  position:fixed;top:0;left:0;right:0;z-index:300;
+  background:var(--red);
+  display:none;
+  align-items:center;
+  gap:12px;
+  padding:0 20px;
+  height:48px;
+  font-size:13px;
+  font-weight:600;
+  color:#fff;
+}
+.hot-banner.visible{display:flex}
+@keyframes hot-pulse{0%,100%{opacity:1}50%{opacity:.7}}
+.hot-banner-dot{
+  width:8px;height:8px;border-radius:50%;
+  background:#fff;flex-shrink:0;
+  animation:hot-pulse 1.2s ease-in-out infinite;
+}
+.hot-banner-summary{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hot-banner-btn{
+  background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);
+  border-radius:8px;padding:4px 14px;font-size:12px;font-weight:700;
+  color:#fff;cursor:pointer;white-space:nowrap;transition:background .15s;font-family:inherit;
+}
+.hot-banner-btn:hover{background:rgba(255,255,255,.35)}
+body.has-hot-banner .topbar{top:48px}
+
+/* Hot Signals Modal */
+.hot-signals-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:400;
+  display:none;align-items:flex-start;justify-content:center;padding-top:80px;
+}
+.hot-signals-overlay.visible{display:flex}
+.hot-signals-panel{
+  background:#0d0d17;border:1px solid rgba(239,68,68,.4);border-radius:16px;
+  width:min(680px,95vw);max-height:80vh;overflow-y:auto;
+  box-shadow:0 0 40px rgba(239,68,68,.2);
+}
+.hot-panel-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:20px 24px;border-bottom:1px solid rgba(255,255,255,.06);
+  position:sticky;top:0;background:#0d0d17;z-index:1;
+}
+.hot-panel-title{font-size:15px;font-weight:800;color:var(--red);display:flex;align-items:center;gap:10px}
+.hot-panel-count{
+  background:var(--red);color:#fff;font-size:11px;font-weight:700;
+  padding:2px 8px;border-radius:10px;
+}
+.hot-panel-close{
+  background:none;border:none;color:var(--dim);font-size:18px;cursor:pointer;
+  padding:4px;border-radius:6px;transition:color .15s;font-family:inherit;
+}
+.hot-panel-close:hover{color:var(--text)}
+.hot-signal-card{
+  padding:20px 24px;border-bottom:1px solid rgba(255,255,255,.06);
+}
+.hot-signal-card:last-child{border-bottom:none}
+.hot-signal-type{
+  font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;
+  color:var(--red);margin-bottom:6px;
+}
+.hot-signal-summary{font-size:14px;font-weight:600;color:var(--text);margin-bottom:10px;line-height:1.5}
+.hot-signal-rec-label{font-size:11px;font-weight:700;color:var(--dim);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px}
+.hot-signal-rec{
+  background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);
+  border-radius:10px;padding:14px;font-size:13px;line-height:1.65;
+  color:var(--text);white-space:pre-wrap;word-break:break-word;
+  margin-bottom:14px;font-family:'Inter',sans-serif;
+}
+.hot-signal-actions{display:flex;gap:8px;flex-wrap:wrap}
+.hot-action-btn{
+  padding:7px 14px;border-radius:8px;font-size:12px;font-weight:600;
+  cursor:pointer;transition:all .15s;border:1px solid;font-family:inherit;
+}
+.hot-action-btn.primary{
+  background:rgba(99,102,241,.15);border-color:rgba(99,102,241,.4);color:#a5b4fc;
+}
+.hot-action-btn.primary:hover{background:rgba(99,102,241,.25)}
+.hot-action-btn.ghost{
+  background:transparent;border-color:rgba(255,255,255,.12);color:var(--dim);
+}
+.hot-action-btn.ghost:hover{color:var(--text);border-color:rgba(255,255,255,.25)}
+.hot-action-btn.dismiss{
+  background:transparent;border-color:rgba(239,68,68,.2);color:rgba(239,68,68,.6);
+}
+.hot-action-btn.dismiss:hover{border-color:rgba(239,68,68,.5);color:var(--red)}
 </style>
 </head>
 <body>
@@ -501,6 +590,28 @@ body::before{content:'';position:fixed;top:-200px;left:50%;transform:translateX(
 
 <!-- SIDEBAR OVERLAY (mobile) -->
 <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
+<!-- HOT SIGNALS BANNER -->
+<div class="hot-banner" id="hotBanner">
+  <div class="hot-banner-dot"></div>
+  <span id="hotBannerCount" style="white-space:nowrap;font-weight:800"></span>
+  <span class="hot-banner-summary" id="hotBannerSummary"></span>
+  <button class="hot-banner-btn" onclick="openHotSignalsPanel()">View All</button>
+</div>
+
+<!-- HOT SIGNALS PANEL -->
+<div class="hot-signals-overlay" id="hotSignalsOverlay" onclick="closeHotSignalsPanel(event)">
+  <div class="hot-signals-panel" onclick="event.stopPropagation()">
+    <div class="hot-panel-header">
+      <div class="hot-panel-title">
+        Hot Signals
+        <span class="hot-panel-count" id="hotPanelCount">0</span>
+      </div>
+      <button class="hot-panel-close" onclick="closeHotSignalsPanel()">&#x2715;</button>
+    </div>
+    <div id="hotSignalsList"></div>
+  </div>
+</div>
 
 <!-- MAIN APP -->
 <div class="app">
@@ -1461,6 +1572,7 @@ async function loadAllData() {
     cachedJobs = deduplicateJobs(jobsRes?.jobs || []);
     cachedContacts = deduplicateContacts(contactsRes?.contacts || []);
     cachedSummary = summaryRes || null;
+    fetchHotSignals();
 
     updateSideBadges();
     refreshCurrentView();
@@ -3916,8 +4028,151 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     closeModal('connectModal');
     document.getElementById('avatarMenu').classList.remove('show');
+    closeHotSignalsPanel();
   }
 });
+
+// ============================================
+// HOT SIGNALS
+// ============================================
+
+let cachedHotSignals = [];
+
+function signalTypeLabel(type) {
+  const labels = {
+    linkedin_accept: 'LinkedIn Accept',
+    linkedin_dm: 'LinkedIn DM',
+    linkedin_inmail: 'LinkedIn InMail',
+    inbox_reply_positive: 'Positive Reply',
+    inbox_reply_negative: 'Negative Reply',
+    inbox_reply_neutral: 'Reply',
+    email_bounce: 'Email Bounce',
+    sent_outreach_captured: 'Outreach Captured',
+    archived_reply_found: 'Archived Reply',
+    profile_view_spike: 'Profile View Spike',
+    other: 'Signal',
+  };
+  return labels[type] || type;
+}
+
+function renderHotSignalCard(signal) {
+  const actionType = signal.recommended_action_type || '';
+  const payload = signal.recommended_action_payload || {};
+  const isLinkedIn = actionType === 'send_linkedin_dm' || signal.signal_type.startsWith('linkedin');
+  const linkedInUrl = payload.recipient_url || signal.source_url || '';
+  const dmBody = signal.ai_recommendation || '';
+
+  let actionBtn = '';
+  if (isLinkedIn && linkedInUrl) {
+    actionBtn = `<button class="hot-action-btn primary" onclick="copyAndOpenLinkedIn('${signal.id}', \`${dmBody.replace(/`/g, '\\`')}\`, '${linkedInUrl}')">Copy &amp; Open LinkedIn</button>`;
+  } else if (actionType === 'send_email' && payload.to) {
+    actionBtn = `<button class="hot-action-btn primary" onclick="sendHotSignalEmail('${signal.id}')">Send Email Draft</button>`;
+  }
+
+  const recBlock = dmBody
+    ? `<div class="hot-signal-rec-label">Recommended action</div><div class="hot-signal-rec">${dmBody.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`
+    : '';
+
+  return `
+<div class="hot-signal-card" id="hsc-${signal.id}">
+  <div class="hot-signal-type">${signalTypeLabel(signal.signal_type)}</div>
+  <div class="hot-signal-summary">${signal.summary.replace(/</g, '&lt;')}</div>
+  ${recBlock}
+  <div class="hot-signal-actions">
+    ${actionBtn}
+    <button class="hot-action-btn dismiss" onclick="dismissHotSignal('${signal.id}')">Dismiss</button>
+  </div>
+</div>`;
+}
+
+function updateHotBanner() {
+  const newSignals = cachedHotSignals.filter(s => s.status === 'new');
+  const banner = document.getElementById('hotBanner');
+  const count = newSignals.length;
+
+  if (count === 0) {
+    banner.classList.remove('visible');
+    document.body.classList.remove('has-hot-banner');
+    return;
+  }
+
+  const countEl = document.getElementById('hotBannerCount');
+  const summaryEl = document.getElementById('hotBannerSummary');
+  countEl.textContent = count === 1 ? '1 Hot Signal' : `${count} Hot Signals`;
+  summaryEl.textContent = newSignals[0].summary;
+  banner.classList.add('visible');
+  document.body.classList.add('has-hot-banner');
+}
+
+function openHotSignalsPanel() {
+  const newSignals = cachedHotSignals.filter(s => s.status === 'new');
+  const list = document.getElementById('hotSignalsList');
+  const countEl = document.getElementById('hotPanelCount');
+  countEl.textContent = newSignals.length;
+  list.innerHTML = newSignals.length
+    ? newSignals.map(renderHotSignalCard).join('')
+    : '<div style="padding:32px 24px;text-align:center;color:var(--dim);font-size:14px">No new hot signals.</div>';
+  document.getElementById('hotSignalsOverlay').classList.add('visible');
+}
+
+function closeHotSignalsPanel(e) {
+  if (!e || e.target === document.getElementById('hotSignalsOverlay')) {
+    document.getElementById('hotSignalsOverlay').classList.remove('visible');
+  }
+}
+
+async function dismissHotSignal(id) {
+  try {
+    await api(`/hot-signals/${id}`, { method: 'PATCH', body: JSON.stringify({ status: 'dismissed' }) });
+    cachedHotSignals = cachedHotSignals.map(s => s.id === id ? { ...s, status: 'dismissed' } : s);
+    document.getElementById(`hsc-${id}`)?.remove();
+    updateHotBanner();
+    const newSignals = cachedHotSignals.filter(s => s.status === 'new');
+    document.getElementById('hotPanelCount').textContent = newSignals.length;
+    if (newSignals.length === 0) {
+      document.getElementById('hotSignalsList').innerHTML =
+        '<div style="padding:32px 24px;text-align:center;color:var(--dim);font-size:14px">No new hot signals.</div>';
+    }
+  } catch (err) {
+    showToast('Could not dismiss signal: ' + err.message, 'error');
+  }
+}
+
+async function copyAndOpenLinkedIn(id, body, url) {
+  try {
+    await navigator.clipboard.writeText(body);
+    showToast('Message copied to clipboard. Opening LinkedIn...', 'success');
+    await api(`/hot-signals/${id}`, { method: 'PATCH', body: JSON.stringify({ status: 'actioned' }) });
+    cachedHotSignals = cachedHotSignals.map(s => s.id === id ? { ...s, status: 'actioned' } : s);
+    updateHotBanner();
+    window.open(url, '_blank');
+    setTimeout(() => {
+      document.getElementById(`hsc-${id}`)?.remove();
+      const newSignals = cachedHotSignals.filter(s => s.status === 'new');
+      document.getElementById('hotPanelCount').textContent = newSignals.length;
+    }, 300);
+  } catch (err) {
+    showToast('Could not copy: ' + err.message, 'error');
+  }
+}
+
+async function fetchHotSignals() {
+  try {
+    const data = await api('/hot-signals?status=new');
+    cachedHotSignals = Array.isArray(data) ? data : [];
+    updateHotBanner();
+  } catch (err) {
+    // Silent fail on polling
+  }
+}
+
+// Poll every 60 seconds while dashboard is open
+setInterval(async () => {
+  if (document.visibilityState === 'visible') {
+    const { data: { session } } = await sb.auth.getSession();
+    if (session) await fetchHotSignals();
+  }
+}, 60000);
 </script>
 </body>
 </html>
