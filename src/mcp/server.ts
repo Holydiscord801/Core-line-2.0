@@ -1773,6 +1773,7 @@ async function batchProcessJobs(params: { min_fit_score?: number; fetch_jds?: bo
 // ============================================
 
 export async function createMCPServer(): Promise<Server> {
+  const sysInst = await getSystemInstructions() as { instructions: string };
   const server = new Server(
     {
       name: 'coreline-v2',
@@ -1782,6 +1783,7 @@ export async function createMCPServer(): Promise<Server> {
       capabilities: {
         tools: {},
       },
+      instructions: sysInst.instructions,
     }
   );
 
