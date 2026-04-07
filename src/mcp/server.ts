@@ -31,7 +31,7 @@ import type {
   PostingStatus,
 } from '../types/index.js';
 import crypto from 'crypto';
-import { fetchJobDescription } from '../utils/jd-scraper.js';
+import { fetchJobDescription, isBlacklistedJobUrl } from '../utils/jd-scraper.js';
 import { generateCoverLetterText } from '../utils/cover-letter-generator.js';
 
 // ============================================
@@ -925,6 +925,13 @@ async function addJob(params: {
 }): Promise<V2Job> {
   const userId = requireAuth();
 
+  if (params.url && isBlacklistedJobUrl(params.url)) {
+    throw new Error(
+      `Rejected: ${params.url} is from a blacklisted source (Lever or Built In). ` +
+      'Use LinkedIn, Indeed, Greenhouse, Workday, or the company careers page instead.'
+    );
+  }
+
   const { data, error } = await supabase
     .from('v2_jobs')
     .insert({
@@ -1678,6 +1685,13 @@ async function bulkImportJobs(params: BulkImportJobsParams): Promise<object> {
   };
 
   for (const job of params.jobs) {
+    // Reject blacklisted sources (Lever, Built In)
+    if (job.url && isBlacklistedJobUrl(job.url)) {
+      results.skipped++;
+      results.errors.push(`${job.company} - ${job.title}: URL from blacklisted source (Lever or Built In). Use LinkedIn, Indeed, Greenhouse, Workday, or the company careers page.`);
+      continue;
+    }
+
     // Check for duplicates by URL
     if (job.url) {
       const { data: existing } = await supabase

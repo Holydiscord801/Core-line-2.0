@@ -188,13 +188,29 @@ async function fetchGeneric(url: string, source = 'generic'): Promise<JdScrapeRe
  * Detect job board from URL and fetch the full job description.
  * Returns { text, source } on success, { text: null, source, error } on failure.
  */
+// Lever and Built In are blacklisted: they lag the hiring cycle and are not
+// allowed sources. Any URL from these domains should never be ingested.
+const BLACKLISTED_DOMAINS = ['lever.co', 'builtin.com', 'builtin.co', 'builtinnyc.com', 'builtinchicago.org', 'builtinseattle.com', 'builtinaustin.com', 'builtinboston.com', 'builtinla.com', 'builtincolorado.com'];
+
+export function isBlacklistedJobUrl(url: string): boolean {
+  if (!url) return false;
+  const u = url.toLowerCase();
+  return BLACKLISTED_DOMAINS.some(domain => u.includes(domain));
+}
+
 export async function fetchJobDescription(url: string): Promise<JdScrapeResult> {
   if (!url) return { text: null, source: 'none', error: 'No URL provided' };
 
   const u = url.toLowerCase();
 
+  if (u.includes('lever.co')) {
+    return { text: null, source: 'lever', error: 'Lever is a blacklisted source. Find this role on LinkedIn, Indeed, Greenhouse, Workday, or the company careers page instead.' };
+  }
+  if (u.includes('builtin') && u.includes('.com')) {
+    return { text: null, source: 'builtin', error: 'Built In is a blacklisted source. Find this role on LinkedIn, Indeed, Greenhouse, Workday, or the company careers page instead.' };
+  }
+
   if (u.includes('greenhouse.io')) return fetchGreenhouse(url);
-  if (u.includes('lever.co')) return fetchLever(url);
   if (u.includes('ashbyhq.com')) return fetchAshby(url);
   if (u.includes('bamboohr.com')) return fetchBambooHR(url);
 
@@ -206,7 +222,6 @@ export async function fetchJobDescription(url: string): Promise<JdScrapeResult> 
   }
 
   if (u.includes('myworkdayjobs.com')) return fetchGeneric(url, 'workday');
-  if (u.includes('builtin') && u.includes('.com')) return fetchGeneric(url, 'builtin');
   if (u.includes('smartrecruiters.com')) return fetchGeneric(url, 'smartrecruiters');
   if (u.includes('jobvite.com')) return fetchGeneric(url, 'jobvite');
   if (u.includes('icims.com')) return fetchGeneric(url, 'icims');
