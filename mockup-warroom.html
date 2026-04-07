@@ -2980,7 +2980,7 @@ function renderNetwork() {
     const lastContact = c.last_contacted_at ? timeAgo(c.last_contacted_at) : 'Never';
 
     return `
-      <div class="contact-card" style="flex-direction:column;align-items:flex-start" onclick="toggleContactExpand(this)">
+      <div class="contact-card" data-contact-id="${c.id}" style="flex-direction:column;align-items:flex-start" onclick="toggleContactExpand(this)">
         <div style="display:flex;gap:12px;align-items:center;width:100%">
           <div class="contact-avatar" style="background:${grad}">${initial}</div>
           <div class="contact-info" style="flex:1">
@@ -4069,6 +4069,15 @@ function renderHotSignalCard(signal) {
     actionBtn = `<button class="hot-action-btn primary" onclick="sendHotSignalEmail('${signal.id}')">Send Email Draft</button>`;
   }
 
+  // View button: route to the related job (preferred) or contact, so the
+  // user can read the full context behind the signal. Hidden for orphan rows.
+  let viewBtn = '';
+  if (signal.related_job_id) {
+    viewBtn = `<button class="hot-action-btn ghost" onclick="viewHotSignalSource('${signal.related_job_id}', null)">View Job</button>`;
+  } else if (signal.related_contact_id) {
+    viewBtn = `<button class="hot-action-btn ghost" onclick="viewHotSignalSource(null, '${signal.related_contact_id}')">View Contact</button>`;
+  }
+
   const recBlock = dmBody
     ? `<div class="hot-signal-rec-label">Recommended action</div><div class="hot-signal-rec">${dmBody.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`
     : '';
@@ -4080,9 +4089,46 @@ function renderHotSignalCard(signal) {
   ${recBlock}
   <div class="hot-signal-actions">
     ${actionBtn}
+    ${viewBtn}
     <button class="hot-action-btn dismiss" onclick="dismissHotSignal('${signal.id}')">Dismiss</button>
   </div>
 </div>`;
+}
+
+// Navigate from a hot signal to its source job (in Pipeline) or contact
+// (in Network), then expand and scroll the matching row/card into view.
+function viewHotSignalSource(jobId, contactId) {
+  // Close the hot signals overlay so the destination is visible.
+  document.getElementById('hotSignalsOverlay').classList.remove('visible');
+
+  if (jobId) {
+    navigateTo('pipeline');
+    expandedPipelineRow = jobId;
+    renderPipeline();
+    setTimeout(() => {
+      const row = document.querySelector(`#pipelineTableBody tr[onclick*="${jobId}"]`);
+      if (row) {
+        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } else {
+        showToast('Job not found in pipeline (it may have been removed).', 'error');
+      }
+    }, 50);
+    return;
+  }
+
+  if (contactId) {
+    navigateTo('network');
+    setTimeout(() => {
+      const card = document.querySelector(`#networkGrid [data-contact-id="${contactId}"]`);
+      if (card) {
+        const expand = card.querySelector('.contact-expand');
+        if (expand) expand.style.display = 'block';
+        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } else {
+        showToast('Contact not found in network (it may have been removed).', 'error');
+      }
+    }, 50);
+  }
 }
 
 function updateHotBanner() {
