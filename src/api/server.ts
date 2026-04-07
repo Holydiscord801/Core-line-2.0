@@ -1,5 +1,7 @@
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { authMiddleware } from './middleware/auth.js';
 import jobsRouter from './routes/jobs.js';
 import contactsRouter from './routes/contacts.js';
@@ -19,6 +21,12 @@ export function createApp() {
 
   app.use(cors());
   app.use(express.json());
+
+  // Serve static HTML mockups from repo root
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
+  const repoRoot = path.resolve(__dirname, '../..');
+  app.use(express.static(repoRoot, { index: false, extensions: ['html'] }));
 
   // Health check
   app.get('/api/health', (_req, res) => {
