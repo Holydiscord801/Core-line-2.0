@@ -1632,19 +1632,16 @@ function deduplicateContacts(contacts) {
   return Array.from(byNameCompany.values());
 }
 
-// Get contacts for a job: explicit v2_job_contacts links first, then company-name fallback, deduplicated
+// Get contacts for a job. Strict v2_job_contacts join via the linked_job_ids array
+// hydrated by GET /api/contacts. No company-name fallback (it produced false positives
+// for jobs whose contact rows used a slightly different company string).
 function getJobContacts(job) {
   const linked = cachedContacts.filter(c =>
-    c.linked_job_ids && c.linked_job_ids.includes(job.id)
+    Array.isArray(c.linked_job_ids) && c.linked_job_ids.includes(job.id)
   );
-  const companyMatch = cachedContacts.filter(c =>
-    c.company && job.company &&
-    c.company.toLowerCase() === job.company.toLowerCase()
-  );
-  const merged = [...linked, ...companyMatch];
   const seenIds = new Set();
   const seenNames = new Set();
-  return merged.filter(c => {
+  return linked.filter(c => {
     if (seenIds.has(c.id)) return false;
     const nameKey = normalizeContactName(c.name);
     if (seenNames.has(nameKey)) return false;

@@ -55,7 +55,34 @@ router.get('/', async (req: Request, res: Response) => {
       return;
     }
 
-    res.json({ contacts: data });
+    // Hydrate linked_job_ids per contact via v2_job_contacts. Single query, grouped client side.
+    const contactIds = (data || []).map((c: any) => c.id);
+    const linkMap: Record<string, string[]> = {};
+    if (contactIds.length > 0) {
+      const { data: links, error: linkErr } = await supabase
+        .from('v2_job_contacts')
+        .select('contact_id, job_id')
+        .in('contact_id', contactIds);
+
+      if (linkErr) {
+        res.status(500).json({ error: linkErr.message });
+        return;
+      }
+
+      for (const row of links || []) {
+        const cid = (row as any).contact_id as string;
+        const jid = (row as any).job_id as string;
+        if (!linkMap[cid]) linkMap[cid] = [];
+        linkMap[cid].push(jid);
+      }
+    }
+
+    const hydrated = (data || []).map((c: any) => ({
+      ...c,
+      linked_job_ids: linkMap[c.id] || [],
+    }));
+
+    res.json({ contacts: hydrated });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch contacts' });
   }
