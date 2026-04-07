@@ -11,7 +11,7 @@
 
 CREATE TABLE IF NOT EXISTS v2_hot_signals (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES v2_users(id) ON DELETE CASCADE,
     signal_type TEXT NOT NULL CHECK (signal_type IN (
         'linkedin_accept','linkedin_dm','linkedin_inmail',
         'inbox_reply_positive','inbox_reply_negative','inbox_reply_neutral',
