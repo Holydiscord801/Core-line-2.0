@@ -4,68 +4,8 @@ import type { BattlePlanData } from '../../types/index.js';
 
 const router = Router();
 
-// GET /api/battle-plan
-router.get('/', async (req: Request, res: Response) => {
-  try {
-    const date = (req.query.date as string) || new Date().toISOString().split('T')[0];
-
-    const { data, error } = await supabase
-      .from('v2_battle_plans')
-      .select('*')
-      .eq('user_id', req.userId!)
-      .eq('plan_date', date)
-      .single();
-
-    if (error && error.code !== 'PGRST116') {
-      res.status(500).json({ error: error.message });
-      return;
-    }
-
-    if (!data) {
-      res.json({ battle_plan: null, message: `No battle plan found for ${date}` });
-      return;
-    }
-
-    res.json({ battle_plan: data });
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch battle plan' });
-  }
-});
-
-// GET /api/battle-plans/today
-router.get('/today', async (req: Request, res: Response) => {
-  try {
-    const today = new Date().toISOString().split('T')[0];
-
-    const { data, error } = await supabase
-      .from('v2_battle_plans')
-      .select('*')
-      .eq('user_id', req.userId!)
-      .eq('plan_date', today)
-      .single();
-
-    if (error && error.code !== 'PGRST116') {
-      res.status(500).json({ error: error.message });
-      return;
-    }
-
-    if (!data) {
-      res.json({ battle_plan: null, message: `No battle plan for ${today}. POST /generate to create one.` });
-      return;
-    }
-
-    res.json({ battle_plan: data });
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch today\'s battle plan' });
-  }
-});
-
-// POST /api/battle-plans/generate
-// Builds a prioritized battle plan from live pipeline data
-router.post('/generate', async (req: Request, res: Response) => {
-  try {
-    const userId = req.userId!;
-    const today = new Date().toISOString().split('T')[0];
+async function generateBattlePlanForUser(userId: string): Promise<any> {
+  const today = new Date().toISOString().split('T')[0];
     const threeDaysAgo = new Date();
     threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
     const threeDaysAgoISO = threeDaysAgo.toISOString();
@@ -145,8 +85,7 @@ router.post('/generate', async (req: Request, res: Response) => {
       staleOutreachResult, warmContactsResult,
     ].find(r => r.error);
     if (queryError?.error) {
-      res.status(500).json({ error: queryError.error.message });
-      return;
+      throw new Error(queryError.error.message);
     }
 
     const activeJobs = activeJobsResult.data || [];
@@ -279,13 +218,95 @@ router.post('/generate', async (req: Request, res: Response) => {
       .single();
 
     if (error) {
+      throw new Error(error.message);
+    }
+
+    return data;
+}
+
+// GET /api/battle-plan
+router.get('/', async (req: Request, res: Response) => {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const date = (req.query.date as string) || today;
+
+    const { data, error } = await supabase
+      .from('v2_battle_plans')
+      .select('*')
+      .eq('user_id', req.userId!)
+      .eq('plan_date', date)
+      .single();
+
+    if (error && error.code !== 'PGRST116') {
       res.status(500).json({ error: error.message });
       return;
     }
 
-    res.status(201).json({ battle_plan: data });
+    if (!data) {
+      if (date === today) {
+        try {
+          const generated = await generateBattlePlanForUser(req.userId!);
+          res.json({ battle_plan: generated });
+          return;
+        } catch (genErr: any) {
+          console.error('[battle-plan] auto-generate failed:', genErr);
+          res.json({ battle_plan: null, message: `generate failed: ${genErr?.message || 'unknown'}` });
+          return;
+        }
+      }
+      res.json({ battle_plan: null, message: `No battle plan found for ${date}` });
+      return;
+    }
+
+    res.json({ battle_plan: data });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to generate battle plan' });
+    res.status(500).json({ error: 'Failed to fetch battle plan' });
+  }
+});
+
+// GET /api/battle-plans/today
+router.get('/today', async (req: Request, res: Response) => {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+
+    const { data, error } = await supabase
+      .from('v2_battle_plans')
+      .select('*')
+      .eq('user_id', req.userId!)
+      .eq('plan_date', today)
+      .single();
+
+    if (error && error.code !== 'PGRST116') {
+      res.status(500).json({ error: error.message });
+      return;
+    }
+
+    if (!data) {
+      try {
+        const generated = await generateBattlePlanForUser(req.userId!);
+        res.json({ battle_plan: generated });
+        return;
+      } catch (genErr: any) {
+        console.error('[battle-plan] auto-generate failed:', genErr);
+        res.json({ battle_plan: null, message: `generate failed: ${genErr?.message || 'unknown'}` });
+        return;
+      }
+    }
+
+    res.json({ battle_plan: data });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch today\'s battle plan' });
+  }
+});
+
+// POST /api/battle-plans/generate
+// Builds a prioritized battle plan from live pipeline data
+router.post('/generate', async (req: Request, res: Response) => {
+  try {
+    const data = await generateBattlePlanForUser(req.userId!);
+    res.status(201).json({ battle_plan: data });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || 'Failed to generate battle plan' });
   }
 });
 

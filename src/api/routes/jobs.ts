@@ -38,6 +38,30 @@ const UpdateJobSchema = z.object({
   applied_at: z.string().datetime().optional(),
 });
 
+function extractVerbPhrase(recommendation: string | null | undefined): string | null {
+  if (!recommendation) return null;
+  const cleaned = recommendation.trim().replace(/^["'*\s]+/, '').split(/[.!?\n]/)[0].trim();
+  if (!cleaned) return null;
+  const words = cleaned.split(/\s+/).filter(Boolean);
+  const stop = new Set(['the', 'a', 'an', 'to', 'please', 'you', 'should', 'consider']);
+  while (words.length > 0 && stop.has(words[0].toLowerCase())) words.shift();
+  if (words.length === 0) return null;
+  return words.slice(0, 4).join(' ').toLowerCase();
+}
+
+function fallbackVerb(status: string | null | undefined): string | null {
+  switch (status) {
+    case 'new': return 'review and apply';
+    case 'researching': return 'finish research';
+    case 'applied': return 'follow up';
+    case 'interviewing': return 'prep interview';
+    case 'offer': return 'review offer';
+    case 'closed': return 'archive';
+    case 'rejected': return 'archive';
+    default: return null;
+  }
+}
+
 // GET /jobs - List jobs with optional filters
 router.get('/', async (req: Request, res: Response) => {
   try {
@@ -62,7 +86,82 @@ router.get('/', async (req: Request, res: Response) => {
       return;
     }
 
-    res.json({ jobs: data });
+    const jobs = data || [];
+    const jobIds = jobs.map((j: any) => j.id);
+
+    if (jobIds.length === 0) {
+      res.json({ jobs });
+      return;
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+
+    const [seqResult, fuResult, signalResult] = await Promise.all([
+      supabase
+        .from('v2_outreach_sequences')
+        .select('job_id, preferred_channel, preferred_channel_reason, created_at')
+        .in('job_id', jobIds)
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('v2_followups')
+        .select('job_id, due_date')
+        .in('job_id', jobIds)
+        .eq('status', 'pending')
+        .gte('due_date', today)
+        .order('due_date', { ascending: true }),
+      supabase
+        .from('v2_hot_signals')
+        .select('related_job_id, ai_recommendation, created_at')
+        .in('related_job_id', jobIds)
+        .eq('status', 'new')
+        .order('created_at', { ascending: false }),
+    ]);
+
+    const seqMap = new Map<string, any>();
+    for (const row of seqResult.data || []) {
+      const jid = (row as any).job_id;
+      if (jid && !seqMap.has(jid)) seqMap.set(jid, row);
+    }
+
+    const fuMap = new Map<string, any>();
+    for (const row of fuResult.data || []) {
+      const jid = (row as any).job_id;
+      if (jid && !fuMap.has(jid)) fuMap.set(jid, row);
+    }
+
+    const signalMap = new Map<string, any>();
+    for (const row of signalResult.data || []) {
+      const jid = (row as any).related_job_id;
+      if (jid && !signalMap.has(jid)) signalMap.set(jid, row);
+    }
+
+    const enriched = jobs.map((j: any) => {
+      const seq = seqMap.get(j.id);
+      const fu = fuMap.get(j.id);
+      const signal = signalMap.get(j.id);
+
+      const preferred_channel = seq?.preferred_channel ?? null;
+      const preferred_channel_reason = seq?.preferred_channel_reason ?? null;
+      const next_followup_at = fu?.due_date ?? null;
+
+      let next_action_verb: string | null = null;
+      if (signal?.ai_recommendation) {
+        next_action_verb = extractVerbPhrase(signal.ai_recommendation);
+      }
+      if (!next_action_verb) {
+        next_action_verb = fallbackVerb(j.status);
+      }
+
+      return {
+        ...j,
+        preferred_channel,
+        preferred_channel_reason,
+        next_followup_at,
+        next_action_verb,
+      };
+    });
+
+    res.json({ jobs: enriched });
   } catch (error) {
     res.status(500).json({ error: 'Internal server error' });
   }
