@@ -147,18 +147,84 @@ export async function processNegativeResponse(
   }
 }
 
+// Channel values accepted by v2_outreach after migration 009. The legacy
+// 'linkedin' label is still mapped to 'linkedin_dm' so older callers do not
+// break the CHECK constraint.
+export type OutreachChannel =
+  | 'email'
+  | 'linkedin_dm'
+  | 'linkedin_inmail'
+  | 'linkedin_connection_note'
+  | 'phone'
+  | 'in_person';
+
+type LegacyOrCurrentChannel = OutreachChannel | 'linkedin';
+
+function normalizeChannel(channel: LegacyOrCurrentChannel): OutreachChannel {
+  return channel === 'linkedin' ? 'linkedin_dm' : channel;
+}
+
+/**
+ * Find an active sequence for (job, contact), or create a new one. The phase
+ * 3 timeline depends on every v2_outreach row having a sequence_id so the
+ * /api/outreach/sequences endpoint can return it.
+ */
+async function findOrCreateSequence(
+  userId: string,
+  jobId: string | null,
+  contactId: string | null,
+  sentAt: string
+): Promise<string | null> {
+  if (!jobId || !contactId) return null;
+
+  // Prefer an existing non-terminal sequence on the same pair so we append
+  // instead of starting a parallel one.
+  const { data: existing } = await supabase
+    .from('v2_outreach_sequences')
+    .select('id, status')
+    .eq('user_id', userId)
+    .eq('job_id', jobId)
+    .eq('contact_id', contactId)
+    .in('status', ['active', 'delivered'])
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  if (existing && existing.length > 0) {
+    return existing[0].id;
+  }
+
+  const { data: created, error: createErr } = await supabase
+    .from('v2_outreach_sequences')
+    .insert({
+      user_id: userId,
+      job_id: jobId,
+      contact_id: contactId,
+      intent: 'auto created by sent scan',
+      status: 'active',
+      first_attempted_at: sentAt,
+      last_attempted_at: sentAt,
+    })
+    .select('id')
+    .single();
+
+  if (createErr || !created) return null;
+  return created.id;
+}
+
 /**
  * Process a manually sent outreach detected via email scanning.
- * Creates outreach record and auto-generates follow-up timer.
+ * Creates outreach record tied to a sequence and auto-generates follow-up timer.
  */
 export async function processSentOutreach(
   userId: string,
   jobId: string | null,
   contactId: string | null,
-  channel: 'email' | 'linkedin',
+  channel: LegacyOrCurrentChannel,
   messageText: string,
   sentAt: string
 ): Promise<{ outreachId: string; followupId: string } | null> {
+  const normalizedChannel = normalizeChannel(channel);
+
   // Check if outreach already tracked (avoid duplicates)
   if (contactId) {
     const { data: existing } = await supabase
@@ -166,7 +232,7 @@ export async function processSentOutreach(
       .select('id')
       .eq('user_id', userId)
       .eq('contact_id', contactId)
-      .eq('channel', channel)
+      .eq('channel', normalizedChannel)
       .gte('sent_at', new Date(new Date(sentAt).getTime() - 24 * 60 * 60 * 1000).toISOString())
       .limit(1);
 
@@ -175,14 +241,22 @@ export async function processSentOutreach(
     }
   }
 
-  // Create outreach record
+  // Find or create a parent sequence so the new attempt shows up on the
+  // phase 3 timeline and the recompute trigger can maintain preferred_channel.
+  const sequenceId = await findOrCreateSequence(userId, jobId, contactId, sentAt);
+
+  // Create outreach record. delivery_status is 'delivered' because the sent
+  // scan observes the message in Gmail's Sent folder, which implies transport
+  // success.
   const { data: outreach, error: outreachError } = await supabase
     .from('v2_outreach')
     .insert({
       user_id: userId,
       job_id: jobId,
       contact_id: contactId,
-      channel,
+      sequence_id: sequenceId,
+      channel: normalizedChannel,
+      delivery_status: 'delivered',
       message_text: messageText,
       sent_at: sentAt,
       response_received: false,
@@ -202,10 +276,10 @@ export async function processSentOutreach(
   }
 
   // Auto-create follow-up timer
-  const timerType: TimerType = channel === 'email' ? 'outreach_email' : 'outreach_linkedin';
+  const timerType: TimerType = normalizedChannel === 'email' ? 'outreach_email' : 'outreach_linkedin';
 
   // Get contact and job names for the reason
-  let reason = `Follow up on ${channel} outreach`;
+  let reason = `Follow up on ${normalizedChannel} outreach`;
   if (contactId) {
     const { data: contact } = await supabase
       .from('v2_contacts')
@@ -213,7 +287,7 @@ export async function processSentOutreach(
       .eq('id', contactId)
       .single();
     if (contact) {
-      reason = `Follow up on ${channel} outreach to ${contact.name} at ${contact.company}`;
+      reason = `Follow up on ${normalizedChannel} outreach to ${contact.name} at ${contact.company}`;
     }
   }
 
