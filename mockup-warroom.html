@@ -1304,6 +1304,10 @@ let expandedActionItemId = null;
 let expandedOutreachId = null;
 let expandedFollowupId = null;
 let generatedApiKey = null;
+// Timeline cache keyed by jobId. Populated after first successful fetch so
+// re-renders (from the 30s poll, status changes, etc) can paint the timeline
+// immediately instead of flashing "Loading..." and never refilling.
+let timelineCache = {};
 
 // ============================================
 // API HELPER
@@ -1871,6 +1875,14 @@ function renderBattleGrid() {
     html += `</div>`;
     return html;
   }).join('');
+
+  // If a card is expanded, kick off a background timeline fetch. When cached
+  // data already exists renderCardDetail painted it synchronously, so this
+  // runs as a silent refresh. On first expand the body shows "Loading..."
+  // until this resolves.
+  if (expandedCardId) {
+    setTimeout(() => loadTimelineForCard(expandedCardId), 0);
+  }
 }
 
 function renderCardDetail(job) {
@@ -1953,10 +1965,17 @@ function renderCardDetail(job) {
 
   html += `</div>`; // end row
 
-  // Outreach Timeline section (lazy-loaded after card renders)
+  // Outreach Timeline section. If we already have cached sequences for this
+  // job, paint them synchronously so re-renders (from polling, status change,
+  // etc) never flash "Loading..." and get stuck. A background refresh is
+  // still kicked off from renderBattleGrid after every render.
   html += `<div class="timeline-section" id="timeline-${job.id}" style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">`;
   html += `<h4 style="font-size:11px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin:0 0 12px 0">Outreach Timeline</h4>`;
-  html += `<div class="timeline-body" id="timeline-body-${job.id}" style="font-size:12px;color:var(--dim)">Loading outreach timeline...</div>`;
+  const cachedSequences = timelineCache[job.id];
+  const initialBody = cachedSequences
+    ? renderTimelineBody(cachedSequences)
+    : `<div style="font-size:12px;color:var(--dim);font-style:italic">Loading outreach timeline...</div>`;
+  html += `<div class="timeline-body" id="timeline-body-${job.id}" style="font-size:12px;color:var(--dim)">${initialBody}</div>`;
   html += `</div>`;
 
   // Actions
@@ -1987,8 +2006,9 @@ function renderCardDetail(job) {
 
 function expandCard(jobId) {
   expandedCardId = jobId;
+  // renderBattleGrid will paint from timelineCache[jobId] if present and
+  // kick off a background fetch via its own setTimeout.
   renderBattleGrid();
-  setTimeout(() => loadTimelineForCard(jobId), 0);
 }
 
 function collapseCard() {
@@ -4112,19 +4132,36 @@ function renderTimelineSequence(seq) {
   return html;
 }
 
+// Render a sequences array (possibly empty) to the timeline body HTML string.
+// Kept separate from loadTimelineForCard so renderCardDetail can paint from
+// cache synchronously during re-renders.
+function renderTimelineBody(sequences) {
+  if (!sequences || sequences.length === 0) {
+    return `<div style="font-size:12px;color:var(--dim);font-style:italic">No outreach sequences for this job yet. Log the first message to start a timeline.</div>`;
+  }
+  return sequences.map(renderTimelineSequence).join('');
+}
+
 async function loadTimelineForCard(jobId) {
   const target = document.getElementById('timeline-body-' + jobId);
   if (!target) return;
   try {
     const res = await api('/outreach/sequences?job_id=' + jobId);
     const sequences = (res && res.sequences) || [];
-    if (sequences.length === 0) {
-      target.innerHTML = `<div style="font-size:12px;color:var(--dim);font-style:italic">No outreach sequences for this job yet. Log the first message to start a timeline.</div>`;
-      return;
+    // Cache on success so subsequent re-renders can paint synchronously.
+    timelineCache[jobId] = sequences;
+    // Only touch the DOM if this card is still the expanded one. A poll that
+    // lands after the user collapses or expands a different card should not
+    // overwrite whatever is currently on screen.
+    if (expandedCardId === jobId) {
+      target.innerHTML = renderTimelineBody(sequences);
     }
-    target.innerHTML = sequences.map(renderTimelineSequence).join('');
   } catch (err) {
-    target.innerHTML = `<div style="color:var(--dim)">Could not load timeline. ${esc(err.message || String(err))}</div>`;
+    // If we already had cached data visible, leave it alone. Only show an
+    // error state when the cache is empty (first load failed).
+    if (!timelineCache[jobId] && expandedCardId === jobId) {
+      target.innerHTML = `<div style="color:var(--dim)">Could not load timeline. ${esc(err.message || String(err))}</div>`;
+    }
   }
 }
 
