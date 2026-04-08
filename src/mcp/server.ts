@@ -31,8 +31,29 @@ import type {
   PostingStatus,
 } from '../types/index.js';
 import crypto from 'crypto';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 import { fetchJobDescription, isBlacklistedJobUrl } from '../utils/jd-scraper.js';
 import { generateCoverLetterText } from '../utils/cover-letter-generator.js';
+
+// ============================================
+// Finalized MCP Operating Playbook
+// ============================================
+//
+// Loaded at module startup from docs/PLAYBOOK.md and used as the single source
+// of truth for both getSystemInstructions() and the top-level `instructions`
+// field on the Server constructor inside createMCPServer(). The MCP handshake
+// delivers PLAYBOOK_TEXT verbatim to any client that connects.
+//
+// Path resolution works in both dev (src/mcp/server.ts via ts-node) and
+// compiled (dist/mcp/server.js via node) because both sit two levels deep
+// under the project root.
+const __mcpDirname = dirname(fileURLToPath(import.meta.url));
+const PLAYBOOK_TEXT = readFileSync(
+  join(__mcpDirname, '..', '..', 'docs', 'PLAYBOOK.md'),
+  'utf-8'
+);
 
 // ============================================
 // Authentication
@@ -1143,82 +1164,8 @@ async function snoozeFollowup(followupId: string, days: number): Promise<V2Follo
 // ============================================
 
 async function getSystemInstructions(): Promise<object> {
-  const instructions = `# Core Line 2.0 - AI System Instructions
-
-You are connected to Core Line, a job search command center. The user has connected you via MCP to help manage their job search pipeline.
-
-## What Core Line Is
-Core Line is infrastructure, not AI. YOU are the AI. Core Line provides the database, the dashboard, and the tools. You do the thinking, searching, scoring, and writing.
-
-## Your Daily Workflow
-1. Call get_profile() to load user preferences and resume
-2. Call get_battle_plan() to see today's priorities
-3. Call get_followups_due() to check overdue follow-ups
-4. Call get_pipeline_summary() for pipeline health
-5. Execute actions: search for jobs, score matches, write outreach, log activities
-
-## Available Tools (${tools.length} total)
-${tools.map(t => '- ' + t.name + ': ' + (t.description || '').split('.')[0]).join('\n')}
-
-## How to Format Battle Plans
-When generating a battle plan, structure it as:
-- PRIORITY 1: URGENT FOLLOW-UPS (timers expired)
-- PRIORITY 2: DUE TODAY (timers expiring)
-- PRIORITY 3: NEW OPPORTUNITIES (from search)
-- PRIORITY 4: PIPELINE HEALTH (stale items)
-
-## Key Rules
-- "Core Line" is always two words
-- Business days only for follow-up timers (skip weekends)
-- Jobs scoring 70%+ get automatic deep research + outreach
-- Always log outreach after sending messages
-- Check for email responses every 2 hours during work hours
-- Follow-up escalation: 3 days, then 5 days, then escalate to another contact, then archive at 14 days
-
-## JD & Cover Letter Pipeline (70%+ Jobs)
-When a job scores 70%+, run this pipeline:
-1. fetch_jd(job_id) — Pull the full job description from the posting URL
-2. generate_cover_letter(job_id) — Create an AI-quality cover letter using JD + user profile
-3. generate_outreach(job_id, contact_id) — Draft outreach to hiring manager/recruiter
-4. The user sees a complete card: JD, cover letter, apply links, outreach draft
-
-If fetch_jd() fails (LinkedIn/Indeed block scraping), note it and generate the cover letter from the job title/company context.
-Use batch_process_jobs() after bulk_import_jobs() to process all 70%+ jobs at once.
-
-## New User Onboarding
-1. get_profile() — if resume_text is empty, ask the user to share their resume/career highlights
-2. Run job search based on preferences
-3. Score all results with score_job()
-4. batch_process_jobs() — auto-fetch JDs and generate cover letters for all 70%+ jobs
-5. Generate outreach for top 3-5 matches
-The user should see complete cards (JD, cover letter, apply links, outreach draft) from day one.
-
-## Button Behaviors
-- Apply button = opens job URL only. NEVER changes status.
-- Mark Applied / Done = changes status to 'applied', records applied_at, starts follow-up chain.
-- Follow-up chain: 3 biz days → 5 biz days → escalate contact → auto-archive at 14 days.
-
-## Hot Signals
-Hot signals are urgent findings too important to wait for the morning summary.
-
-Tools:
-- create_hot_signal(signal_type, severity, summary, ai_recommendation, recommended_action_type, recommended_action_payload, related_job_id?, related_contact_id?, source_email_id?, source_url?) -- write a new signal
-- get_hot_signals(status?) -- read signals, defaults to status=new
-- acknowledge_hot_signal(id) -- mark seen
-- action_hot_signal(id) -- mark completed
-- dismiss_hot_signal(id) -- mark not acting
-
-Signal types: linkedin_accept, linkedin_dm, linkedin_inmail, inbox_reply_positive, inbox_reply_negative, inbox_reply_neutral, email_bounce, sent_outreach_captured, archived_reply_found, profile_view_spike, other
-
-Rules:
-1. Every two hours during work hours (8am-8pm), run the email and social signal scans. Any urgent finding goes to create_hot_signal with a pre-drafted next action.
-2. Never create a hot signal without a recommended action. No FYI-only signals.
-3. Every hot signal must include ai_recommendation with a complete pre-drafted message body (no em dashes anywhere in the text).
-4. Examples that trigger a hot signal: CEO accepts LinkedIn invite on application day, email bounces to a contact, positive reply arrives in inbox at 2pm, InMail from a recruiter referencing a specific role.
-5. Call get_hot_signals() at the start of every session to surface anything that came in since the last session.`;
-
   return {
-    instructions,
+    instructions: PLAYBOOK_TEXT,
     version: '2.0.0',
     tools_available: tools.length,
   };
@@ -2020,7 +1967,9 @@ async function dismissHotSignal(id: string): Promise<object> {
 // ============================================
 
 export async function createMCPServer(): Promise<Server> {
-  const sysInst = await getSystemInstructions() as { instructions: string };
+  // PLAYBOOK_TEXT is the single source of truth for the operating playbook.
+  // Same string is returned by getSystemInstructions() as the fallback tool
+  // and delivered here on the MCP handshake so clients receive it automatically.
   const server = new Server(
     {
       name: 'coreline-v2',
@@ -2030,7 +1979,7 @@ export async function createMCPServer(): Promise<Server> {
       capabilities: {
         tools: {},
       },
-      instructions: sysInst.instructions,
+      instructions: PLAYBOOK_TEXT,
     }
   );
 
