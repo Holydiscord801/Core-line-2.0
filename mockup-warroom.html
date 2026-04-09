@@ -3399,12 +3399,12 @@ const aiInstructions = {
   ],
   ChatGPT: [
     '<strong>Generate and copy your API key</strong> above',
-    'Open <strong>ChatGPT</strong> > click your profile > <strong>Settings</strong> > <strong>Connectors</strong> > <strong>Add</strong>. For the URL, paste: <code style="background:rgba(255,255,255,.1);padding:2px 6px;border-radius:4px">https://api.coreline.app/mcp</code>. For the API key, paste what you copied in step 1.',
+    'Open <strong>ChatGPT</strong> > click your profile > <strong>Settings</strong> > <strong>Connectors</strong> > <strong>Add</strong>. For the URL, paste: <code style="background:rgba(255,255,255,.1);padding:2px 6px;border-radius:4px">https://coreline-v2-sigma.vercel.app/mcp</code>. For the API key, paste what you copied in step 1.',
     'Start a new chat and say: <strong>"Connect to my Core Line battle plan"</strong>. ChatGPT loads your job search data automatically.'
   ],
   Gemini: [
     '<strong>Generate and copy your API key</strong> above',
-    'Open <strong>gemini.google.com</strong> > click the puzzle piece icon > <strong>Extensions</strong> > <strong>Add custom action</strong>. For the URL, paste: <code style="background:rgba(255,255,255,.1);padding:2px 6px;border-radius:4px">https://api.coreline.app/mcp</code>. For the API key, paste what you copied in step 1.',
+    'Open <strong>gemini.google.com</strong> > click the puzzle piece icon > <strong>Extensions</strong> > <strong>Add custom action</strong>. For the URL, paste: <code style="background:rgba(255,255,255,.1);padding:2px 6px;border-radius:4px">https://coreline-v2-sigma.vercel.app/mcp</code>. For the API key, paste what you copied in step 1.',
     'Start a new chat and say: <strong>"Connect to my Core Line battle plan"</strong>. Gemini syncs your targets, contacts, and pipeline.'
   ],
   OpenClaw: [
@@ -3730,7 +3730,7 @@ function selectAiClient(clientName) {
 function renderClientConfig(clientName, apiKey) {
   const keyPlaceholder = apiKey || 'YOUR_API_KEY';
   const keyDisplay = esc(keyPlaceholder);
-  const mcpUrl = 'https://api.coreline.app/mcp';
+  const mcpUrl = 'https://coreline-v2-sigma.vercel.app/mcp';
 
   // One copy-paste message per client. URL-based — no local file paths,
   // no config files, no node commands. Just a URL and a key.
