@@ -3730,50 +3730,52 @@ function selectAiClient(clientName) {
 function renderClientConfig(clientName, apiKey) {
   const keyPlaceholder = apiKey || 'YOUR_API_KEY';
   const keyDisplay = esc(keyPlaceholder);
-  const serverPath = 'node /path/to/coreline-v2/dist/mcp/index.js';
+  const mcpUrl = 'https://api.coreline.app/mcp';
 
-  // One copy-paste message per client. The user's AI is smart enough to
-  // handle MCP setup, config files, and restarts on its own.
+  // One copy-paste message per client. URL-based — no local file paths,
+  // no config files, no node commands. Just a URL and a key.
+  const baseMsg = (extra) => `Hey, I just signed up for Core Line — it's an MCP-powered career engine that hunts jobs, writes outreach, and manages follow-ups. Here's how to connect:\n\nMCP server URL: ${mcpUrl}\nAPI key: ${keyDisplay}\n\n${extra}\n\nOnce connected, walk me through onboarding to set up my profile and job search preferences.`;
+
   const clients = {
     'claude-desktop': {
       title: 'Claude Desktop',
-      message: `Hey, I just signed up for Core Line — it's an MCP-powered job search engine. Here's my API key: ${keyDisplay}\n\nPlease set up the Core Line MCP server connection for me. The server command is: ${serverPath}\n\nThe env var it needs is CORELINE_API_KEY set to my key above. Once connected, walk me through onboarding to set up my profile and job search preferences.`,
+      message: baseMsg('Please add this as a remote MCP server in my Claude Desktop settings. Use the URL above with my API key as the Bearer token in the Authorization header.'),
     },
     'chatgpt': {
       title: 'ChatGPT',
-      message: `Hey, I just signed up for Core Line — it's an MCP-powered job search engine. Here's my API key: ${keyDisplay}\n\nPlease connect to the Core Line MCP server. The server command is: ${serverPath}\n\nThe env var it needs is CORELINE_API_KEY set to my key above. Once connected, walk me through onboarding to set up my profile and job search preferences.`,
+      message: baseMsg('Please connect to this MCP server. The URL is above, and my API key goes in the Authorization header as a Bearer token.'),
     },
     'gemini': {
       title: 'Gemini',
-      message: `Hey, I just signed up for Core Line — it's an MCP-powered job search engine. Here's my API key: ${keyDisplay}\n\nPlease set up the Core Line MCP server connection. The server command is: ${serverPath}\n\nThe env var it needs is CORELINE_API_KEY set to my key above. Once connected, walk me through onboarding to set up my profile and job search preferences.`,
+      message: baseMsg('Please connect to this MCP server. The URL is above, and my API key goes in the Authorization header as a Bearer token.'),
     },
     'cursor': {
       title: 'Cursor',
-      message: `Hey, I just signed up for Core Line — it's an MCP-powered job search engine. Here's my API key: ${keyDisplay}\n\nPlease add the Core Line MCP server to my Cursor config. The server command is: ${serverPath}\n\nThe env var it needs is CORELINE_API_KEY set to my key above. Once connected, walk me through onboarding to set up my profile and job search preferences.`,
+      message: baseMsg('Please add this as a remote MCP server in my Cursor config. Use the URL above with my API key as the Bearer token.'),
     },
     'windsurf': {
       title: 'Windsurf',
-      message: `Hey, I just signed up for Core Line — it's an MCP-powered job search engine. Here's my API key: ${keyDisplay}\n\nPlease add the Core Line MCP server to Windsurf. The server command is: ${serverPath}\n\nThe env var it needs is CORELINE_API_KEY set to my key above. Once connected, walk me through onboarding to set up my profile and job search preferences.`,
+      message: baseMsg('Please add this as a remote MCP server in Windsurf. Use the URL above with my API key as the Bearer token.'),
     },
     'vscode': {
       title: 'VS Code',
-      message: `Hey, I just signed up for Core Line — it's an MCP-powered job search engine. Here's my API key: ${keyDisplay}\n\nPlease add the Core Line MCP server to my VS Code MCP config. The server command is: ${serverPath}\n\nThe env var it needs is CORELINE_API_KEY set to my key above. Once connected, walk me through onboarding to set up my profile and job search preferences.`,
+      message: baseMsg('Please add this as a remote MCP server in my VS Code MCP config. Use the URL above with my API key as the Bearer token.'),
     },
     'zed': {
       title: 'Zed',
-      message: `Hey, I just signed up for Core Line — it's an MCP-powered job search engine. Here's my API key: ${keyDisplay}\n\nPlease add the Core Line MCP server to my Zed config (note: Zed uses context_servers, not mcpServers). The server command is: ${serverPath}\n\nThe env var it needs is CORELINE_API_KEY set to my key above. Once connected, walk me through onboarding to set up my profile and job search preferences.`,
+      message: baseMsg('Please add this as a remote MCP server in my Zed config under context_servers. Use the URL above with my API key as the Bearer token.'),
     },
     'claude-code': {
       title: 'Claude Code',
-      message: `Hey, I just signed up for Core Line — it's an MCP-powered job search engine. Here's my API key: ${keyDisplay}\n\nPlease run: claude mcp add coreline ${serverPath} -e CORELINE_API_KEY=${keyDisplay}\n\nThen walk me through onboarding to set up my profile and job search preferences.`,
+      message: `Hey, I just signed up for Core Line — it's an MCP-powered career engine.\n\nPlease run:\nclaude mcp add coreline --transport http ${mcpUrl} --header "Authorization: Bearer ${keyDisplay}"\n\nOnce connected, walk me through onboarding to set up my profile and job search preferences.`,
     },
     'gemini-cli': {
       title: 'Gemini CLI',
-      message: `Hey, I just signed up for Core Line — it's an MCP-powered job search engine. Here's my API key: ${keyDisplay}\n\nPlease add the Core Line MCP server to my Gemini CLI config (~/.gemini/settings.json under mcpServers). The server command is: ${serverPath}\n\nThe env var it needs is CORELINE_API_KEY set to my key above. Once connected, walk me through onboarding to set up my profile and job search preferences.`,
+      message: baseMsg('Please add this as a remote MCP server in my Gemini CLI config. Use the URL above with my API key as the Bearer token.'),
     },
     'other': {
       title: 'Other AI',
-      message: `Hey, I just signed up for Core Line — it's an MCP-powered job search engine. Here's my API key: ${keyDisplay}\n\nPlease set up the Core Line MCP server. It's a stdio MCP server. The command is: CORELINE_API_KEY=${keyDisplay} ${serverPath}\n\nOnce connected, walk me through onboarding to set up my profile and job search preferences.`,
+      message: `Hey, I just signed up for Core Line — it's an MCP-powered career engine.\n\nMCP server URL: ${mcpUrl}\nTransport: Streamable HTTP (POST)\nAPI key: ${keyDisplay}\nAuth: Authorization: Bearer ${keyDisplay}\n\nPlease connect to this MCP server and walk me through onboarding.`,
     },
   };
 
