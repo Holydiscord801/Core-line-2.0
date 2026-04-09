@@ -33,7 +33,7 @@ router.get('/profile', async (req: Request, res: Response) => {
     const userId = req.userId!;
     const { data, error } = await supabase
       .from('v2_users')
-      .select('id, email, full_name, resume_text, preferences, onboarding_complete, autopilot_enabled, review_window_hours, created_at, updated_at')
+      .select('id, email, full_name, resume_text, preferences, onboarding_complete, autopilot_enabled, review_window_hours, trial_started_at, trial_ends_at, trial_length_days, preferences_version, created_at, updated_at')
       .eq('id', userId)
       .single();
     if (error) throw error;

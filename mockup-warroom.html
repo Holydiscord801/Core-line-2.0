@@ -174,45 +174,77 @@ body::before{content:'';position:fixed;top:-200px;left:50%;transform:translateX(
 .api-key-card .key-prefix{font-family:'Courier New',monospace;font-size:12px;color:var(--accent2)}
 .api-key-card .key-meta{font-size:11px;color:var(--dim)}
 
-/* Onboarding wizard */
-.onboarding-overlay{position:fixed;inset:0;background:var(--bg);z-index:900;display:flex;align-items:center;justify-content:center;overflow-y:auto;padding:20px}
-.onboarding-overlay.hidden{display:none}
-.onboarding-container{max-width:640px;width:100%;margin:auto}
-.onboarding-progress{display:flex;gap:8px;margin-bottom:32px;justify-content:center}
-.onboarding-progress .step-dot{width:40px;height:4px;border-radius:2px;background:rgba(255,255,255,.1);transition:background .3s}
-.onboarding-progress .step-dot.active{background:var(--accent)}
-.onboarding-progress .step-dot.done{background:var(--green)}
-.onboarding-card{background:rgba(13,13,23,.8);backdrop-filter:blur(20px);border:1px solid rgba(99,102,241,.2);border-radius:20px;padding:40px;position:relative;animation:fadeUp .3s ease}
+/* Connect your AI */
+.connect-ai-overlay{position:fixed;inset:0;background:var(--bg);z-index:900;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:40px 20px}
+.connect-ai-overlay.hidden{display:none}
+.connect-ai-container{max-width:760px;width:100%;margin:auto}
+.connect-ai-card{background:rgba(13,13,23,.8);backdrop-filter:blur(20px);border:1px solid rgba(99,102,241,.2);border-radius:20px;padding:40px;position:relative;animation:fadeUp .3s ease}
 @keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
-.onboarding-step-num{font-size:11px;font-weight:700;letter-spacing:2px;color:var(--accent);text-transform:uppercase;margin-bottom:12px}
-.onboarding-title{font-size:24px;font-weight:800;margin-bottom:8px}
-.onboarding-sub{font-size:14px;color:var(--dim);line-height:1.6;margin-bottom:28px}
-.onboarding-field{margin-bottom:20px}
-.onboarding-label{font-size:12px;font-weight:600;letter-spacing:.5px;color:var(--dim);margin-bottom:8px;display:block}
-.onboarding-input{width:100%;background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:10px;padding:12px 16px;color:var(--text);font-size:14px;font-family:inherit;outline:none;transition:border-color .2s}
-.onboarding-input:focus{border-color:var(--accent)}
-.onboarding-textarea{width:100%;background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:10px;padding:12px 16px;color:var(--text);font-size:13px;font-family:inherit;outline:none;resize:vertical;min-height:140px;line-height:1.6;transition:border-color .2s}
-.onboarding-textarea:focus{border-color:var(--accent)}
-.onboarding-textarea::placeholder{color:var(--dim)}
-.onboarding-chips{display:flex;flex-wrap:wrap;gap:8px}
-.onboarding-chip{padding:8px 16px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:rgba(255,255,255,.03);color:var(--dim);transition:all .2s;user-select:none}
-.onboarding-chip:hover{border-color:rgba(99,102,241,.4);color:var(--text)}
-.onboarding-chip.selected{background:rgba(99,102,241,.15);border-color:var(--accent);color:var(--accent)}
-.onboarding-remote-options{display:flex;gap:8px;margin-top:8px}
-.onboarding-remote-option{flex:1;padding:12px;border-radius:10px;text-align:center;font-size:13px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:rgba(255,255,255,.03);color:var(--dim);transition:all .2s}
-.onboarding-remote-option:hover{border-color:rgba(99,102,241,.4)}
-.onboarding-remote-option.selected{background:rgba(99,102,241,.15);border-color:var(--accent);color:var(--accent)}
-.onboarding-nav{display:flex;justify-content:space-between;margin-top:28px}
-.onboarding-btn{padding:12px 28px;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;border:none;transition:all .2s;letter-spacing:.3px}
-.onboarding-btn.primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff}
-.onboarding-btn.primary:hover{opacity:.9}
-.onboarding-btn.ghost{background:transparent;color:var(--dim);border:1px solid var(--border)}
-.onboarding-btn.ghost:hover{color:var(--text);border-color:rgba(255,255,255,.2)}
-.onboarding-btn:disabled{opacity:.4;cursor:not-allowed}
-.onboarding-summary{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px}
-.onboarding-summary-card{background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:12px;padding:16px}
-.onboarding-summary-label{font-size:11px;font-weight:700;letter-spacing:1px;color:var(--dim);text-transform:uppercase;margin-bottom:6px}
-.onboarding-summary-value{font-size:14px;font-weight:600;color:var(--text)}
+.connect-ai-logo-row{text-align:center;margin-bottom:18px}
+.connect-ai-logo-row .logo{font-size:22px;display:inline-block}
+.connect-ai-headline{font-size:26px;font-weight:800;text-align:center;margin-bottom:10px;letter-spacing:-.3px}
+.connect-ai-sub{font-size:14px;color:var(--dim);line-height:1.65;text-align:center;max-width:560px;margin:0 auto 28px}
+.connect-ai-key-box{background:rgba(99,102,241,.06);border:1px solid rgba(99,102,241,.2);border-radius:12px;padding:18px 20px;margin-bottom:22px}
+.connect-ai-key-label{font-size:11px;font-weight:700;letter-spacing:1px;color:var(--dim);text-transform:uppercase;margin-bottom:8px}
+.connect-ai-key-row{display:flex;align-items:center;gap:12px;font-family:'Courier New',monospace;font-size:13px}
+.connect-ai-key-val{flex:1;color:var(--accent2);letter-spacing:.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.connect-ai-key-val.placeholder{color:var(--dim)}
+.connect-ai-key-copy{background:var(--accent);border:none;border-radius:8px;padding:8px 16px;color:#fff;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;font-family:inherit}
+.connect-ai-key-copy:hover{opacity:.85}
+.connect-ai-key-warning{font-size:11px;color:var(--yellow);margin-top:10px;font-weight:600}
+.connect-ai-key-warning.hidden{display:none}
+.connect-ai-picker-label{font-size:12px;font-weight:600;letter-spacing:.5px;color:var(--dim);margin-bottom:12px;display:block;text-transform:uppercase}
+.connect-ai-groups{display:grid;grid-template-columns:repeat(2,1fr);gap:18px;margin-bottom:22px}
+.connect-ai-group-label{font-size:11px;font-weight:700;letter-spacing:1.2px;color:var(--dim);text-transform:uppercase;margin-bottom:8px}
+.connect-ai-tabs{display:flex;flex-wrap:wrap;gap:6px}
+.connect-ai-tab{padding:8px 14px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:rgba(255,255,255,.03);color:var(--dim);transition:all .2s;user-select:none;font-family:inherit}
+.connect-ai-tab:hover{border-color:rgba(99,102,241,.4);color:var(--text)}
+.connect-ai-tab.active{background:rgba(99,102,241,.15);border-color:var(--accent);color:var(--accent)}
+.connect-ai-body{background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:12px;padding:22px;margin-bottom:20px}
+.connect-ai-body-title{font-size:15px;font-weight:700;margin-bottom:14px;color:var(--text)}
+.connect-ai-section{margin-bottom:18px}
+.connect-ai-section:last-child{margin-bottom:0}
+.connect-ai-section-label{font-size:11px;font-weight:700;letter-spacing:1px;color:var(--dim);text-transform:uppercase;margin-bottom:8px}
+.connect-ai-install p,.connect-ai-schedule p{font-size:13px;color:var(--text);line-height:1.6;margin-bottom:8px}
+.connect-ai-install code,.connect-ai-schedule code{background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:4px;padding:1px 6px;font-family:'Courier New',monospace;font-size:12px;color:var(--accent2)}
+.connect-ai-code{background:#06060b;border:1px solid var(--border);border-radius:8px;padding:12px 14px;font-family:'Courier New',monospace;font-size:12px;color:var(--text);line-height:1.55;overflow-x:auto;white-space:pre;margin-top:6px}
+.connect-ai-limitations{background:rgba(234,179,8,.08);border:1px solid rgba(234,179,8,.3);border-radius:10px;padding:12px 16px;font-size:12px;color:var(--yellow);line-height:1.55}
+.connect-ai-limitations strong{color:var(--yellow)}
+.connect-ai-status{display:flex;align-items:center;justify-content:center;gap:10px;padding:16px;font-size:13px;color:var(--dim);background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:12px;margin-bottom:14px}
+.connect-ai-status.success{color:var(--green);border-color:rgba(34,197,94,.3);background:rgba(34,197,94,.06)}
+.connect-ai-status.timeout{color:var(--yellow);border-color:rgba(234,179,8,.3);background:rgba(234,179,8,.06)}
+.connect-ai-spinner{width:14px;height:14px;border:2px solid rgba(99,102,241,.25);border-top-color:var(--accent);border-radius:50%;animation:caiSpin .8s linear infinite}
+@keyframes caiSpin{to{transform:rotate(360deg)}}
+.connect-ai-retry-btn{background:var(--accent);border:none;border-radius:8px;padding:8px 16px;color:#fff;font-size:12px;font-weight:600;cursor:pointer;margin-left:10px;font-family:inherit}
+.connect-ai-retry-btn:hover{opacity:.85}
+.connect-ai-help{font-size:12px;color:var(--dim);text-align:center}
+.connect-ai-help a{color:var(--accent);text-decoration:none;cursor:pointer}
+.connect-ai-help a:hover{text-decoration:underline}
+@media(max-width:700px){.connect-ai-card{padding:24px}.connect-ai-groups{grid-template-columns:1fr}}
+
+/* Trial countdown pill */
+.trial-pill{display:inline-flex;align-items:center;gap:8px;padding:5px 12px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.3px;cursor:pointer;border:1px solid var(--border);background:rgba(255,255,255,.04);color:var(--dim);transition:all .2s;margin-left:12px;font-family:inherit;white-space:nowrap}
+.trial-pill:hover{filter:brightness(1.15)}
+.trial-pill.hidden{display:none}
+.trial-pill.gray{color:var(--dim);background:rgba(255,255,255,.04);border-color:var(--border)}
+.trial-pill.yellow{color:var(--yellow);background:rgba(234,179,8,.1);border-color:rgba(234,179,8,.35)}
+.trial-pill.red{color:var(--red);background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.35)}
+.trial-pill-upgrade{background:var(--red);border:none;border-radius:6px;padding:3px 9px;color:#fff;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.3px}
+.trial-pill-upgrade:hover{opacity:.9}
+
+/* Empty-state hero (war room) */
+.warroom-hero{background:linear-gradient(135deg,rgba(99,102,241,.12),rgba(139,92,246,.08));border:1px solid rgba(99,102,241,.3);border-radius:16px;padding:24px 28px;margin-bottom:24px;position:relative;animation:fadeUp .3s ease}
+.warroom-hero.hidden{display:none}
+.warroom-hero-close{position:absolute;top:12px;right:14px;background:none;border:none;color:var(--dim);font-size:20px;cursor:pointer;line-height:1;padding:4px 8px}
+.warroom-hero-close:hover{color:var(--text)}
+.warroom-hero-eyebrow{font-size:10px;font-weight:700;letter-spacing:1.5px;color:var(--accent);text-transform:uppercase;margin-bottom:8px}
+.warroom-hero-title{font-size:18px;font-weight:800;margin-bottom:6px;padding-right:24px}
+.warroom-hero-sub{font-size:13px;color:var(--dim);line-height:1.6;margin-bottom:16px;max-width:640px}
+.warroom-hero-sub em{color:var(--text);font-style:italic;font-weight:500}
+.warroom-hero-prompts{display:flex;flex-direction:column;gap:8px}
+.warroom-hero-prompt{display:flex;align-items:center;gap:10px;background:rgba(6,6,11,.5);border:1px solid var(--border);border-radius:10px;padding:10px 14px;font-size:12px;color:var(--text);cursor:pointer;transition:all .2s;font-family:inherit;text-align:left}
+.warroom-hero-prompt:hover{border-color:rgba(99,102,241,.4);background:rgba(6,6,11,.7)}
+.warroom-hero-prompt-icon{font-size:14px;opacity:.7}
 
 /* Modal overlays */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(8px);z-index:1000;display:flex;align-items:center;justify-content:center}
@@ -635,6 +667,7 @@ body.has-hot-banner .topbar{top:48px}
       <div class="ai-dot"></div>
       <span id="aiStatusText">Not connected</span>
     </div>
+    <div class="trial-pill hidden gray" id="trialPill" onclick="openUpgradeModal()"></div>
     <div class="topbar-right">
       <div class="avatar" id="userAvatar" onclick="toggleAvatarMenu()">?</div>
       <div class="avatar-menu" id="avatarMenu">
@@ -671,6 +704,22 @@ body.has-hot-banner .topbar{top:48px}
 
   <!-- ===== WAR ROOM VIEW ===== -->
   <div class="main" id="view-warroom">
+    <div class="warroom-hero hidden" id="warroomHero">
+      <button class="warroom-hero-close" onclick="dismissWarroomHero()" aria-label="Dismiss">&times;</button>
+      <div class="warroom-hero-eyebrow">Getting started</div>
+      <div class="warroom-hero-title">Your AI is getting to know you</div>
+      <div class="warroom-hero-sub">Open your AI client and ask: <em>Help me set up my job search.</em> Your AI will walk you through your profile, pull in matching jobs, and draft your outreach. This hero card disappears as soon as your pipeline has any jobs or contacts.</div>
+      <div class="warroom-hero-prompts">
+        <button class="warroom-hero-prompt" onclick="copyHeroPrompt('Help me set up my Coreline profile')">
+          <span class="warroom-hero-prompt-icon">&#128203;</span>
+          <span>Help me set up my Coreline profile</span>
+        </button>
+        <button class="warroom-hero-prompt" onclick="copyHeroPrompt('Start my job search — look for VP Engineering roles at Series B startups')">
+          <span class="warroom-hero-prompt-icon">&#128269;</span>
+          <span>Start my job search &mdash; look for VP Engineering roles at Series B startups</span>
+        </button>
+      </div>
+    </div>
     <div id="warroom-stats">
       <div class="section-header">
         <div class="section-title">Your Campaign</div>
@@ -1122,157 +1171,68 @@ body.has-hot-banner .topbar{top:48px}
 
 </div><!-- end app -->
 
-<!-- ONBOARDING WIZARD -->
-<div class="onboarding-overlay hidden" id="onboardingOverlay">
-  <div class="onboarding-container">
-    <div style="text-align:center;margin-bottom:8px">
-      <div class="logo" style="font-size:22px;display:inline-block">CORE<span style="color:var(--accent)">LINE</span></div>
-    </div>
-    <div class="onboarding-progress" id="onboardingProgress">
-      <div class="step-dot active"></div>
-      <div class="step-dot"></div>
-      <div class="step-dot"></div>
-      <div class="step-dot"></div>
-      <div class="step-dot"></div>
-    </div>
-
-    <!-- Step 1: Welcome -->
-    <div class="onboarding-card" id="onboardStep1">
-      <div class="onboarding-step-num">Step 1 of 5</div>
-      <div class="onboarding-title">Welcome to Core Line</div>
-      <div class="onboarding-sub">Your job search command center. Let's set up your profile so your AI knows what you're looking for.</div>
-      <div class="onboarding-field">
-        <label class="onboarding-label">Full Name</label>
-        <input type="text" class="onboarding-input" id="obName" placeholder="e.g. Micah Baird" autocomplete="name">
+<!-- CONNECT YOUR AI -->
+<div class="connect-ai-overlay hidden" id="connectAiOverlay">
+  <div class="connect-ai-container">
+    <div class="connect-ai-card">
+      <div class="connect-ai-logo-row">
+        <div class="logo">CORE<span style="color:var(--accent)">LINE</span></div>
       </div>
-      <div class="onboarding-nav">
-        <div></div>
-        <button class="onboarding-btn primary" onclick="onboardNext(1)">Get Started</button>
-      </div>
-    </div>
+      <div class="connect-ai-headline">Connect your AI to Coreline</div>
+      <div class="connect-ai-sub">Coreline is infrastructure. You bring the AI. Once you pair your AI client, it sets up your profile, runs your job search, and drafts your outreach. You just watch it work.</div>
 
-    <!-- Step 2: Resume -->
-    <div class="onboarding-card hidden" id="onboardStep2">
-      <div class="onboarding-step-num">Step 2 of 5</div>
-      <div class="onboarding-title">Your Resume</div>
-      <div class="onboarding-sub">Paste your resume text below. Your AI uses this to match you with jobs and personalize outreach. File upload coming soon.</div>
-      <div class="onboarding-field">
-        <label class="onboarding-label">Resume Text</label>
-        <textarea class="onboarding-textarea" id="obResume" placeholder="Paste your resume here. Include your title, experience, key skills, and achievements. The more detail, the better your AI can match and write outreach for you." rows="8"></textarea>
+      <div class="connect-ai-key-box">
+        <div class="connect-ai-key-label">Your API Key</div>
+        <div class="connect-ai-key-row">
+          <span class="connect-ai-key-val placeholder" id="cnKeyDisplay">Generating your key...</span>
+          <button class="connect-ai-key-copy" id="cnKeyCopyBtn" onclick="copyConnectKey()">Copy</button>
+        </div>
+        <div class="connect-ai-key-warning hidden" id="cnKeyWarning">Save this now. It will not be shown again.</div>
       </div>
-      <div style="font-size:11px;color:var(--dim);margin-top:-12px;margin-bottom:16px">Tip: Include your current title, years of experience, industries, and key accomplishments.</div>
-      <div class="onboarding-nav">
-        <button class="onboarding-btn ghost" onclick="onboardBack(2)">Back</button>
-        <button class="onboarding-btn primary" onclick="onboardNext(2)">Continue</button>
-      </div>
-    </div>
 
-    <!-- Step 3: Preferences -->
-    <div class="onboarding-card hidden" id="onboardStep3">
-      <div class="onboarding-step-num">Step 3 of 5</div>
-      <div class="onboarding-title">Your Preferences</div>
-      <div class="onboarding-sub">Tell your AI what kind of roles you're targeting. It uses these to score and filter opportunities.</div>
-
-      <div class="onboarding-field">
-        <label class="onboarding-label">Target Roles (select all that apply)</label>
-        <div class="onboarding-chips" id="obRoles">
-          <div class="onboarding-chip" data-value="VP Engineering" onclick="toggleChip(this)">VP Engineering</div>
-          <div class="onboarding-chip" data-value="CTO" onclick="toggleChip(this)">CTO</div>
-          <div class="onboarding-chip" data-value="SVP Engineering" onclick="toggleChip(this)">SVP Engineering</div>
-          <div class="onboarding-chip" data-value="Director Engineering" onclick="toggleChip(this)">Director Engineering</div>
-          <div class="onboarding-chip" data-value="VP Operations" onclick="toggleChip(this)">VP Operations</div>
-          <div class="onboarding-chip" data-value="VP Technology" onclick="toggleChip(this)">VP Technology</div>
-          <div class="onboarding-chip" data-value="Chief Digital Officer" onclick="toggleChip(this)">Chief Digital Officer</div>
-          <div class="onboarding-chip" data-value="Head of Engineering" onclick="toggleChip(this)">Head of Engineering</div>
+      <div class="connect-ai-picker-label">Pick your AI client</div>
+      <div class="connect-ai-groups">
+        <div>
+          <div class="connect-ai-group-label">Chat apps</div>
+          <div class="connect-ai-tabs">
+            <button class="connect-ai-tab active" data-client="claude-desktop" onclick="selectAiClient('claude-desktop')">Claude Desktop</button>
+            <button class="connect-ai-tab" data-client="chatgpt" onclick="selectAiClient('chatgpt')">ChatGPT Desktop</button>
+            <button class="connect-ai-tab" data-client="gemini" onclick="selectAiClient('gemini')">Gemini Advanced</button>
+          </div>
+        </div>
+        <div>
+          <div class="connect-ai-group-label">Code editors</div>
+          <div class="connect-ai-tabs">
+            <button class="connect-ai-tab" data-client="cursor" onclick="selectAiClient('cursor')">Cursor</button>
+            <button class="connect-ai-tab" data-client="windsurf" onclick="selectAiClient('windsurf')">Windsurf</button>
+            <button class="connect-ai-tab" data-client="vscode" onclick="selectAiClient('vscode')">VS Code</button>
+            <button class="connect-ai-tab" data-client="zed" onclick="selectAiClient('zed')">Zed</button>
+          </div>
+        </div>
+        <div>
+          <div class="connect-ai-group-label">Terminal</div>
+          <div class="connect-ai-tabs">
+            <button class="connect-ai-tab" data-client="claude-code" onclick="selectAiClient('claude-code')">Claude Code</button>
+            <button class="connect-ai-tab" data-client="gemini-cli" onclick="selectAiClient('gemini-cli')">Gemini CLI</button>
+          </div>
+        </div>
+        <div>
+          <div class="connect-ai-group-label">Advanced</div>
+          <div class="connect-ai-tabs">
+            <button class="connect-ai-tab" data-client="other" onclick="selectAiClient('other')">Other MCP clients</button>
+          </div>
         </div>
       </div>
 
-      <div class="onboarding-field">
-        <label class="onboarding-label">Minimum Base Salary (USD)</label>
-        <input type="number" class="onboarding-input" id="obSalary" placeholder="e.g. 180000" step="5000">
+      <div class="connect-ai-body" id="cnClientBody"></div>
+
+      <div class="connect-ai-status" id="cnStatus">
+        <div class="connect-ai-spinner"></div>
+        <span id="cnStatusText">Waiting for your AI to connect...</span>
       </div>
 
-      <div class="onboarding-field">
-        <label class="onboarding-label">Preferred Locations</label>
-        <div style="display:flex;gap:8px">
-          <input type="text" class="onboarding-input" id="obLocationInput" placeholder="Type a city and press Enter" style="flex:1">
-          <button class="onboarding-btn ghost" style="padding:8px 16px;font-size:12px" onclick="addLocation()">Add</button>
-        </div>
-        <div class="onboarding-chips" id="obLocations" style="margin-top:10px"></div>
-      </div>
-
-      <div class="onboarding-field">
-        <label class="onboarding-label">Remote Preference</label>
-        <div class="onboarding-remote-options">
-          <div class="onboarding-remote-option selected" data-value="remote_ok" onclick="selectRemote(this)">Remote OK</div>
-          <div class="onboarding-remote-option" data-value="hybrid" onclick="selectRemote(this)">Hybrid</div>
-          <div class="onboarding-remote-option" data-value="onsite" onclick="selectRemote(this)">On-site Only</div>
-        </div>
-      </div>
-
-      <div class="onboarding-field">
-        <label class="onboarding-label">Industries (select all that apply)</label>
-        <div class="onboarding-chips" id="obIndustries">
-          <div class="onboarding-chip" data-value="SaaS" onclick="toggleChip(this)">SaaS</div>
-          <div class="onboarding-chip" data-value="Fintech" onclick="toggleChip(this)">Fintech</div>
-          <div class="onboarding-chip" data-value="Healthtech" onclick="toggleChip(this)">Healthtech</div>
-          <div class="onboarding-chip" data-value="E-commerce" onclick="toggleChip(this)">E-commerce</div>
-          <div class="onboarding-chip" data-value="Enterprise" onclick="toggleChip(this)">Enterprise</div>
-          <div class="onboarding-chip" data-value="AI/ML" onclick="toggleChip(this)">AI/ML</div>
-          <div class="onboarding-chip" data-value="Cybersecurity" onclick="toggleChip(this)">Cybersecurity</div>
-          <div class="onboarding-chip" data-value="Cloud Infrastructure" onclick="toggleChip(this)">Cloud Infrastructure</div>
-        </div>
-      </div>
-
-      <div class="onboarding-nav">
-        <button class="onboarding-btn ghost" onclick="onboardBack(3)">Back</button>
-        <button class="onboarding-btn primary" onclick="onboardNext(3)">Continue</button>
-      </div>
+      <div class="connect-ai-help">Stuck? <a onclick="showToast('Help docs coming soon', 'info')">View setup help</a></div>
     </div>
-
-    <!-- Step 4: Connect Your AI -->
-    <div class="onboarding-card hidden" id="onboardStep4">
-      <div class="onboarding-step-num">Step 4 of 5</div>
-      <div class="onboarding-title">Connect Your AI</div>
-      <div class="onboarding-sub">Core Line is infrastructure. You bring the AI. Generate an API key, then connect Claude, ChatGPT, Gemini, or any MCP-compatible AI.</div>
-
-      <div style="margin-bottom:20px">
-        <div class="onboarding-label">Your API Key</div>
-        <div style="background:rgba(99,102,241,.06);border:1px solid rgba(99,102,241,.2);border-radius:12px;padding:14px 20px;font-family:'Courier New',monospace;font-size:13px;display:flex;align-items:center;justify-content:space-between;gap:12px">
-          <span id="obApiKeyDisplay" style="color:var(--dim)">Click Generate to create your key</span>
-          <button class="onboarding-btn primary" style="padding:8px 16px;font-size:12px" id="obGenKeyBtn" onclick="obGenerateKey()">Generate Key</button>
-        </div>
-        <div id="obKeyWarning" class="hidden" style="font-size:11px;color:var(--yellow);margin-top:8px;font-weight:600">Save this key now. It will not be shown again.</div>
-      </div>
-
-      <div class="onboarding-label" style="margin-bottom:10px">Quick Setup (Claude Desktop)</div>
-      <div style="background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:10px;padding:16px;font-size:13px;color:var(--dim);line-height:1.8;margin-bottom:20px">
-        1. Open <strong style="color:var(--text)">Claude Desktop</strong> > Settings > Integrations > Add MCP Server<br>
-        2. Name it <strong style="color:var(--text)">"Core Line"</strong> and paste your API key<br>
-        3. Start a new chat and say: <strong style="color:var(--text)">"Connect to my Core Line battle plan"</strong>
-      </div>
-
-      <div style="font-size:11px;color:var(--dim)">You can skip this step and connect your AI later from the API Keys page.</div>
-
-      <div class="onboarding-nav">
-        <button class="onboarding-btn ghost" onclick="onboardBack(4)">Back</button>
-        <button class="onboarding-btn primary" onclick="onboardNext(4)">Continue</button>
-      </div>
-    </div>
-
-    <!-- Step 5: Ready -->
-    <div class="onboarding-card hidden" id="onboardStep5">
-      <div class="onboarding-step-num">Step 5 of 5</div>
-      <div class="onboarding-title">You're Ready</div>
-      <div class="onboarding-sub">Here's what we set up. You can change any of this later in your profile settings.</div>
-
-      <div class="onboarding-summary" id="obSummary"></div>
-
-      <div style="text-align:center;margin-top:8px">
-        <button class="onboarding-btn primary" style="padding:16px 48px;font-size:16px;letter-spacing:.5px" onclick="completeOnboarding()">Launch War Room</button>
-      </div>
-    </div>
-
   </div>
 </div>
 
@@ -1296,6 +1256,7 @@ let authMode = 'signin';
 let cachedJobs = [];
 let cachedContacts = [];
 let cachedSummary = null;
+let cachedProfile = null;
 let cachedFollowups = [];
 let cachedOutreach = [];
 let cachedBattlePlan = null;
@@ -1428,6 +1389,7 @@ async function signOut() {
   cachedJobs = [];
   cachedContacts = [];
   cachedSummary = null;
+  cachedProfile = null;
   cachedFollowups = [];
   cachedOutreach = [];
   cachedBattlePlan = null;
@@ -1450,50 +1412,15 @@ function onAuthStateChange(session) {
 async function checkOnboardingStatus() {
   try {
     const profile = await api('/users/profile');
+    cachedProfile = profile || null;
     if (!profile.onboarding_complete) {
-      showOnboarding();
-      // Pre-fill name if available
-      if (profile.full_name) {
-        document.getElementById('obName').value = profile.full_name;
-      }
-      // Pre-fill resume if available
-      if (profile.resume_text) {
-        document.getElementById('obResume').value = profile.resume_text;
-      }
-      // Pre-fill preferences if available
-      if (profile.preferences) {
-        const prefs = profile.preferences;
-        if (prefs.role_types) {
-          prefs.role_types.forEach(role => {
-            const chip = document.querySelector('#obRoles .onboarding-chip[data-value="' + role + '"]');
-            if (chip) chip.classList.add('selected');
-          });
-        }
-        if (prefs.salary_floor) {
-          document.getElementById('obSalary').value = prefs.salary_floor;
-        }
-        if (prefs.locations) {
-          obLocations = prefs.locations;
-          renderLocationChips();
-        }
-        if (prefs.industries) {
-          prefs.industries.forEach(ind => {
-            const chip = document.querySelector('#obIndustries .onboarding-chip[data-value="' + ind + '"]');
-            if (chip) chip.classList.add('selected');
-          });
-        }
-        if (prefs.remote_ok !== undefined) {
-          const val = prefs.remote_ok ? 'remote_ok' : 'onsite';
-          const option = document.querySelector('.onboarding-remote-option[data-value="' + val + '"]');
-          if (option) selectRemote(option);
-        }
-      }
+      showConnectAi();
     } else {
       loadAllData();
     }
   } catch (err) {
-    // If profile fetch fails, show onboarding anyway
-    showOnboarding();
+    // If profile fetch fails, show Connect AI anyway
+    showConnectAi();
   }
 }
 
@@ -1572,16 +1499,19 @@ function closeModal(id) {
 
 async function loadAllData() {
   try {
-    const [jobsRes, contactsRes, summaryRes] = await Promise.all([
+    const [jobsRes, contactsRes, summaryRes, profileRes] = await Promise.all([
       api('/jobs?limit=200'),
       api('/contacts'),
       api('/summary'),
+      api('/users/profile').catch(() => cachedProfile),
     ]);
     cachedJobs = deduplicateJobs(jobsRes?.jobs || []);
     cachedContacts = deduplicateContacts(contactsRes?.contacts || []);
     cachedSummary = summaryRes || null;
+    if (profileRes) cachedProfile = profileRes;
     fetchHotSignals();
 
+    renderTrialPill(cachedProfile);
     updateSideBadges();
     refreshCurrentView();
   } catch (err) {
@@ -1705,6 +1635,7 @@ async function refreshCurrentView() {
 // ============================================
 
 function renderWarRoom() {
+  renderEmptyStateHero();
   renderStats();
   renderBattleGrid();
   renderWarmContacts();
@@ -3698,183 +3629,37 @@ async function saveReviewWindow() {
 }
 
 // ============================================
-// ONBOARDING WIZARD
+// CONNECT YOUR AI
 // ============================================
 
-let obCurrentStep = 1;
-let obApiKey = null;
-let obLocations = [];
+let connectAiKey = null;
+let connectAiKeyId = null;
+let connectAiPollTimer = null;
+let connectAiTimeoutTimer = null;
+let currentAiClient = 'claude-desktop';
 
-function showOnboarding() {
-  document.getElementById('onboardingOverlay').classList.remove('hidden');
-  // Hide the main app
+function showConnectAi() {
+  document.getElementById('connectAiOverlay').classList.remove('hidden');
   document.querySelector('.app').style.display = 'none';
-  obCurrentStep = 1;
-  updateOnboardingProgress();
+  // Render the default-selected tab body immediately so the user sees structure
+  // while the API key request is in flight.
+  selectAiClient(currentAiClient);
+  generateAndShowKey();
 }
 
-function hideOnboarding() {
-  document.getElementById('onboardingOverlay').classList.add('hidden');
+function hideConnectAi() {
+  document.getElementById('connectAiOverlay').classList.add('hidden');
   document.querySelector('.app').style.display = '';
+  stopPairingPoll();
 }
 
-function updateOnboardingProgress() {
-  const dots = document.querySelectorAll('#onboardingProgress .step-dot');
-  dots.forEach((dot, i) => {
-    dot.className = 'step-dot';
-    if (i + 1 < obCurrentStep) dot.classList.add('done');
-    else if (i + 1 === obCurrentStep) dot.classList.add('active');
-  });
-}
+async function generateAndShowKey() {
+  const display = document.getElementById('cnKeyDisplay');
+  const warning = document.getElementById('cnKeyWarning');
+  const copyBtn = document.getElementById('cnKeyCopyBtn');
 
-function showOnboardStep(step) {
-  for (let i = 1; i <= 5; i++) {
-    const el = document.getElementById('onboardStep' + i);
-    if (el) {
-      if (i === step) {
-        el.classList.remove('hidden');
-        el.style.display = '';
-      } else {
-        el.classList.add('hidden');
-        el.style.display = 'none';
-      }
-    }
-  }
-}
-
-async function onboardNext(fromStep) {
-  // Validate current step
-  if (fromStep === 1) {
-    const name = document.getElementById('obName').value.trim();
-    if (!name) {
-      showToast('Please enter your name', 'error');
-      return;
-    }
-  }
-
-  if (fromStep === 3) {
-    // Save profile data when leaving preferences step
-    await saveOnboardingProfile();
-  }
-
-  if (fromStep === 5) {
-    await completeOnboarding();
-    return;
-  }
-
-  // Prepare step 5 summary
-  if (fromStep === 4) {
-    renderOnboardingSummary();
-  }
-
-  obCurrentStep = fromStep + 1;
-  showOnboardStep(obCurrentStep);
-  updateOnboardingProgress();
-}
-
-function onboardBack(fromStep) {
-  obCurrentStep = fromStep - 1;
-  showOnboardStep(obCurrentStep);
-  updateOnboardingProgress();
-}
-
-function toggleChip(el) {
-  el.classList.toggle('selected');
-}
-
-function getSelectedChips(containerId) {
-  const chips = document.querySelectorAll('#' + containerId + ' .onboarding-chip.selected');
-  return Array.from(chips).map(c => c.dataset.value);
-}
-
-function selectRemote(el) {
-  document.querySelectorAll('.onboarding-remote-option').forEach(o => o.classList.remove('selected'));
-  el.classList.add('selected');
-}
-
-function getSelectedRemote() {
-  const selected = document.querySelector('.onboarding-remote-option.selected');
-  return selected ? selected.dataset.value : 'remote_ok';
-}
-
-function addLocation() {
-  const input = document.getElementById('obLocationInput');
-  const val = input.value.trim();
-  if (!val) return;
-
-  if (!obLocations.includes(val)) {
-    obLocations.push(val);
-    renderLocationChips();
-  }
-  input.value = '';
-  input.focus();
-}
-
-// Handle Enter key in location input
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && document.activeElement?.id === 'obLocationInput') {
-    e.preventDefault();
-    addLocation();
-  }
-});
-
-function removeLocation(val) {
-  obLocations = obLocations.filter(l => l !== val);
-  renderLocationChips();
-}
-
-function renderLocationChips() {
-  const container = document.getElementById('obLocations');
-  container.innerHTML = obLocations.map(loc => `
-    <div class="onboarding-chip selected" onclick="removeLocation('${esc(loc)}')" style="cursor:pointer">
-      ${esc(loc)} <span style="margin-left:6px;opacity:.6">x</span>
-    </div>`).join('');
-}
-
-async function saveOnboardingProfile() {
-  const name = document.getElementById('obName').value.trim();
-  const resume = document.getElementById('obResume').value.trim();
-  const roles = getSelectedChips('obRoles');
-  const salary = parseInt(document.getElementById('obSalary').value) || 0;
-  const remote = getSelectedRemote();
-  const industries = getSelectedChips('obIndustries');
-
-  const preferences = {
-    role_types: roles,
-    salary_floor: salary,
-    locations: obLocations,
-    remote_ok: remote === 'remote_ok' || remote === 'hybrid',
-    industries: industries,
-  };
-
-  try {
-    await api('/users/profile', {
-      method: 'PATCH',
-      body: JSON.stringify({
-        full_name: name,
-        resume_text: resume || null,
-        preferences,
-      }),
-    });
-  } catch (err) {
-    showToast('Failed to save profile: ' + err.message, 'error');
-  }
-}
-
-async function obGenerateKey() {
-  const btn = document.getElementById('obGenKeyBtn');
-  const display = document.getElementById('obApiKeyDisplay');
-  const warning = document.getElementById('obKeyWarning');
-
-  if (obApiKey) {
-    await navigator.clipboard.writeText(obApiKey);
-    btn.textContent = 'Copied!';
-    setTimeout(() => btn.textContent = 'Copy Key', 2000);
-    return;
-  }
-
-  btn.textContent = 'Generating...';
-  btn.disabled = true;
+  display.textContent = 'Generating your key...';
+  display.classList.add('placeholder');
 
   try {
     const res = await api('/auth/api-key', {
@@ -3882,76 +3667,360 @@ async function obGenerateKey() {
       body: JSON.stringify({ name: 'Core Line AI - Setup' }),
     });
 
-    obApiKey = res.api_key;
-    display.textContent = obApiKey;
-    display.style.color = 'var(--accent2)';
+    connectAiKey = res.api_key;
+    connectAiKeyId = res.api_key_id || res.id || null;
+    display.textContent = connectAiKey;
+    display.classList.remove('placeholder');
     warning.classList.remove('hidden');
 
-    await navigator.clipboard.writeText(obApiKey);
-    btn.textContent = 'Copy Key';
-    btn.disabled = false;
-    showToast('API key generated and copied', 'success');
+    // Re-render the active tab body so the config snippet includes the real key
+    selectAiClient(currentAiClient);
+
+    try {
+      await navigator.clipboard.writeText(connectAiKey);
+      copyBtn.textContent = 'Copied';
+      setTimeout(() => { copyBtn.textContent = 'Copy'; }, 2000);
+    } catch (_) { /* clipboard may be unavailable; user can click Copy manually */ }
+
+    // Start polling for pair if we have an id
+    if (connectAiKeyId) {
+      startPairingPoll(connectAiKeyId);
+    }
   } catch (err) {
-    btn.textContent = 'Generate Key';
-    btn.disabled = false;
+    display.textContent = 'Failed to generate key';
     showToast('Failed to generate key: ' + err.message, 'error');
   }
 }
 
-function renderOnboardingSummary() {
-  const name = document.getElementById('obName').value.trim() || 'Not set';
-  const resume = document.getElementById('obResume').value.trim();
-  const roles = getSelectedChips('obRoles');
-  const salary = document.getElementById('obSalary').value;
-  const industries = getSelectedChips('obIndustries');
-  const remote = getSelectedRemote();
-  const remoteLabel = remote === 'remote_ok' ? 'Remote OK' : remote === 'hybrid' ? 'Hybrid' : 'On-site Only';
-
-  const container = document.getElementById('obSummary');
-  container.innerHTML = `
-    <div class="onboarding-summary-card">
-      <div class="onboarding-summary-label">Name</div>
-      <div class="onboarding-summary-value">${esc(name)}</div>
-    </div>
-    <div class="onboarding-summary-card">
-      <div class="onboarding-summary-label">Resume</div>
-      <div class="onboarding-summary-value">${resume ? resume.substring(0, 80) + '...' : 'Not provided'}</div>
-    </div>
-    <div class="onboarding-summary-card">
-      <div class="onboarding-summary-label">Target Roles</div>
-      <div class="onboarding-summary-value">${roles.length > 0 ? roles.join(', ') : 'None selected'}</div>
-    </div>
-    <div class="onboarding-summary-card">
-      <div class="onboarding-summary-label">Salary Floor</div>
-      <div class="onboarding-summary-value">${salary ? '$' + parseInt(salary).toLocaleString() : 'Not set'}</div>
-    </div>
-    <div class="onboarding-summary-card">
-      <div class="onboarding-summary-label">Locations</div>
-      <div class="onboarding-summary-value">${obLocations.length > 0 ? obLocations.join(', ') : 'Anywhere'}</div>
-    </div>
-    <div class="onboarding-summary-card">
-      <div class="onboarding-summary-label">Remote / Industries</div>
-      <div class="onboarding-summary-value">${remoteLabel}${industries.length > 0 ? ' - ' + industries.join(', ') : ''}</div>
-    </div>
-    <div class="onboarding-summary-card" style="grid-column:1/-1">
-      <div class="onboarding-summary-label">AI Connected</div>
-      <div class="onboarding-summary-value">${obApiKey ? 'Yes - API key generated' : 'Not yet - you can do this later'}</div>
-    </div>`;
+async function copyConnectKey() {
+  if (!connectAiKey) return;
+  const btn = document.getElementById('cnKeyCopyBtn');
+  try {
+    await navigator.clipboard.writeText(connectAiKey);
+    btn.textContent = 'Copied';
+    setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+  } catch (err) {
+    showToast('Copy failed — select the key and copy manually', 'error');
+  }
 }
 
-async function completeOnboarding() {
+function selectAiClient(clientName) {
+  currentAiClient = clientName;
+  document.querySelectorAll('.connect-ai-tab').forEach(t => {
+    t.classList.toggle('active', t.dataset.client === clientName);
+  });
+  const body = document.getElementById('cnClientBody');
+  if (body) {
+    body.innerHTML = renderClientConfig(clientName, connectAiKey);
+  }
+}
+
+function renderClientConfig(clientName, apiKey) {
+  const keyPlaceholder = apiKey || 'YOUR_API_KEY_WILL_APPEAR_HERE';
+  const keyDisplay = esc(keyPlaceholder);
+
+  // Most clients share the same MCP config JSON shape
+  const mcpJson = (serverKey) => `{
+  "${serverKey}": {
+    "coreline": {
+      "command": "node",
+      "args": ["/path/to/coreline-v2/dist/mcp/index.js"],
+      "env": {
+        "CORELINE_API_KEY": "${keyDisplay}"
+      }
+    }
+  }
+}`;
+
+  const sections = {
+    'claude-desktop': {
+      title: 'Claude Desktop',
+      install: `
+        <p>Open <strong>Claude Desktop</strong> -> Settings -> Developer -> Edit Config. Paste this into your <code>mcpServers</code> object (merge with any existing entries):</p>
+        <pre class="connect-ai-code">${mcpJson('mcpServers')}</pre>
+        <p>Save, quit Claude Desktop fully, and reopen it.</p>
+      `,
+      schedule: `
+        <p>Open Settings -> Skills -> Scheduled tasks -> Add task. Paste:</p>
+        <pre class="connect-ai-code">Check my Coreline jobs and update outreach drafts daily at 8am.</pre>
+      `,
+      limitations: ''
+    },
+    'chatgpt': {
+      title: 'ChatGPT Desktop',
+      install: `
+        <p>Enable Developer Mode in <strong>Settings -> Connectors -> Advanced</strong>, then click "Add a new MCP server" and paste this config:</p>
+        <pre class="connect-ai-code">${mcpJson('mcpServers')}</pre>
+        <p>Name it "coreline" and save. Start a new chat to load the tools.</p>
+      `,
+      schedule: `
+        <p>Once connected, say:</p>
+        <pre class="connect-ai-code">Create a task to check my Coreline jobs every day at 8am and update outreach drafts.</pre>
+        <p>ChatGPT will confirm and schedule it.</p>
+      `,
+      limitations: `<strong>Requires ChatGPT Plus or higher.</strong> The Tasks feature is not available on Windows desktop or in web browsers — use macOS desktop, iOS, or Android. ChatGPT Pro tier is currently excluded from Tasks.`
+    },
+    'gemini': {
+      title: 'Gemini Advanced',
+      install: `
+        <p>The consumer Gemini apps do not currently host MCP clients natively. To use Coreline with Gemini, install <strong>Gemini CLI</strong> (see the Gemini CLI tab) and pair that.</p>
+        <p>You can still use Gemini Advanced's Scheduled Actions to trigger the CLI sweep below.</p>
+      `,
+      schedule: `
+        <p>In the Gemini app, tap menu -> Scheduled actions -> Create -> paste:</p>
+        <pre class="connect-ai-code">Check my Coreline jobs and update outreach drafts daily at 8am.</pre>
+      `,
+      limitations: `<strong>Scheduled actions require Gemini Advanced or Google Workspace Business+.</strong> The Gemini web, mobile, and native desktop apps do not yet host MCP clients — pair via Gemini CLI instead.`
+    },
+    'cursor': {
+      title: 'Cursor',
+      install: `
+        <p>Open <code>~/.cursor/mcp.json</code> (create it if it doesn't exist) and add:</p>
+        <pre class="connect-ai-code">${mcpJson('mcpServers')}</pre>
+        <p>Restart Cursor or reload the MCP panel.</p>
+      `,
+      schedule: `
+        <p>Start a Background Agent with the prompt:</p>
+        <pre class="connect-ai-code">Check my Coreline jobs daily and update outreach drafts.</pre>
+        <p>Cursor will run it on its servers.</p>
+      `,
+      limitations: `<strong>Background Agents require Cursor Pro or Business tier</strong> and consume agent compute credits.`
+    },
+    'windsurf': {
+      title: 'Windsurf',
+      install: `
+        <p>Open <strong>Cascade settings -> MCP servers -> Add server</strong>. Paste this JSON:</p>
+        <pre class="connect-ai-code">${mcpJson('mcpServers')}</pre>
+        <p>Save and restart Cascade.</p>
+      `,
+      schedule: `
+        <p>Windsurf doesn't support scheduled tasks. Coreline still works interactively — open Windsurf and say:</p>
+        <pre class="connect-ai-code">Run my Coreline sweep</pre>
+        <p>whenever you want a fresh pass.</p>
+      `,
+      limitations: `<strong>No native scheduling support.</strong> Interactive-only mode. For a proactive layer, pair a second AI client (Claude Code, ChatGPT Plus, or Gemini CLI) that runs on a schedule.`
+    },
+    'vscode': {
+      title: 'VS Code',
+      install: `
+        <p>Open <strong>settings.json</strong> and add the following under <code>github.copilot.mcp</code> (or your Continue/Cline config):</p>
+        <pre class="connect-ai-code">${mcpJson('mcpServers')}</pre>
+        <p>Reload the window to pick up the new server.</p>
+      `,
+      schedule: `
+        <p>VS Code + Copilot doesn't natively support scheduled tasks. Use OS cron or GitHub Actions if you want a scheduled sweep. Otherwise, run interactively:</p>
+        <pre class="connect-ai-code">Run my Coreline sweep</pre>
+      `,
+      limitations: `<strong>No native scheduling support.</strong> Requires GitHub Copilot, Continue, or Cline as the MCP host.`
+    },
+    'zed': {
+      title: 'Zed',
+      install: `
+        <p>Open Zed settings and add to <code>context_servers</code> (note: different key than other clients):</p>
+        <pre class="connect-ai-code">${mcpJson('context_servers')}</pre>
+        <p>Reload Zed.</p>
+      `,
+      schedule: `
+        <p>Zed doesn't support scheduled tasks yet. Run interactively:</p>
+        <pre class="connect-ai-code">Run my Coreline sweep</pre>
+      `,
+      limitations: `<strong>Zed uses <code>context_servers</code>, not <code>mcpServers</code> — copy carefully.</strong> No native scheduling support.`
+    },
+    'claude-code': {
+      title: 'Claude Code',
+      install: `
+        <p>Run this in your terminal:</p>
+        <pre class="connect-ai-code">claude mcp add coreline node /path/to/coreline-v2/dist/mcp/index.js -e CORELINE_API_KEY=${keyDisplay}</pre>
+        <p>Restart Claude Code to load the server.</p>
+      `,
+      schedule: `
+        <p>Once connected, run:</p>
+        <pre class="connect-ai-code">/loop 1d "Check my Coreline jobs, run a sweep, and update outreach drafts"</pre>
+        <p>Your machine must be on when the task fires, but Claude Code takes care of the rest.</p>
+      `,
+      limitations: `<strong>Desktop scheduled tasks don't work on Linux</strong> — use <code>claude -p</code> with OS cron instead. Recurring tasks auto-expire after 3 days and need to be recreated.`
+    },
+    'gemini-cli': {
+      title: 'Gemini CLI',
+      install: `
+        <p>Open <code>~/.gemini/settings.json</code> and add under <code>mcpServers</code>:</p>
+        <pre class="connect-ai-code">${mcpJson('mcpServers')}</pre>
+        <p>Restart any running Gemini CLI sessions.</p>
+      `,
+      schedule: `
+        <p>Add to your crontab:</p>
+        <pre class="connect-ai-code">0 8 * * * gemini -p 'Check my Coreline jobs and update outreach drafts'</pre>
+      `,
+      limitations: ''
+    },
+    'other': {
+      title: 'Other MCP clients',
+      install: `
+        <p>Any MCP-compatible client that supports stdio servers can connect. Use your API key:</p>
+        <pre class="connect-ai-code">${keyDisplay}</pre>
+        <p>and launch the server via:</p>
+        <pre class="connect-ai-code">CORELINE_API_KEY=${keyDisplay} node /path/to/coreline-v2/dist/mcp/index.js</pre>
+        <p>Consult your client's docs for where to paste the command.</p>
+      `,
+      schedule: `
+        <p>Your client may have its own scheduling mechanism — check its docs. If not, you can wrap the above command in OS cron.</p>
+      `,
+      limitations: ''
+    },
+  };
+
+  const section = sections[clientName] || sections['claude-desktop'];
+  let html = '<div class="connect-ai-body-title">' + esc(section.title) + '</div>';
+  html += '<div class="connect-ai-section connect-ai-install"><div class="connect-ai-section-label">Install</div>' + section.install + '</div>';
+  html += '<div class="connect-ai-section connect-ai-schedule"><div class="connect-ai-section-label">Schedule your sweep</div>' + section.schedule + '</div>';
+  if (section.limitations) {
+    html += '<div class="connect-ai-section"><div class="connect-ai-section-label">Known limitations</div><div class="connect-ai-limitations">' + section.limitations + '</div></div>';
+  }
+  return html;
+}
+
+function startPairingPoll(keyId) {
+  stopPairingPoll();
+  const statusEl = document.getElementById('cnStatus');
+  const statusText = document.getElementById('cnStatusText');
+  if (statusEl) {
+    statusEl.className = 'connect-ai-status';
+    statusEl.innerHTML = '<div class="connect-ai-spinner"></div><span id="cnStatusText">Waiting for your AI to connect...</span>';
+  }
+
+  connectAiPollTimer = setInterval(async () => {
+    try {
+      const res = await api('/auth/api-keys/' + keyId + '/status');
+      if (res && res.paired === true) {
+        stopPairingPoll();
+        const s = document.getElementById('cnStatus');
+        if (s) {
+          s.className = 'connect-ai-status success';
+          s.innerHTML = '<span>Connected. Loading your war room...</span>';
+        }
+        setTimeout(() => {
+          hideConnectAi();
+          loadAllData();
+          showToast('AI connected. Welcome to Core Line.', 'success');
+        }, 600);
+      }
+    } catch (_) {
+      // Silently ignore transient errors; the 5-min timeout handles hard failure.
+    }
+  }, 2000);
+
+  // 5-minute timeout
+  connectAiTimeoutTimer = setTimeout(() => {
+    stopPairingPoll();
+    const s = document.getElementById('cnStatus');
+    if (s) {
+      s.className = 'connect-ai-status timeout';
+      s.innerHTML = '<span>Didn\'t hear from your AI yet. Double-check your config and try again.</span>'
+        + '<button class="connect-ai-retry-btn" onclick="startPairingPoll(connectAiKeyId)">Retry</button>';
+    }
+  }, 5 * 60 * 1000);
+}
+
+function stopPairingPoll() {
+  if (connectAiPollTimer) {
+    clearInterval(connectAiPollTimer);
+    connectAiPollTimer = null;
+  }
+  if (connectAiTimeoutTimer) {
+    clearTimeout(connectAiTimeoutTimer);
+    connectAiTimeoutTimer = null;
+  }
+}
+
+// ============================================
+// TRIAL COUNTDOWN PILL
+// ============================================
+
+function renderTrialPill(profile) {
+  const pill = document.getElementById('trialPill');
+  if (!pill) return;
+  if (!profile || !profile.trial_ends_at) {
+    pill.classList.add('hidden');
+    return;
+  }
+  const end = new Date(profile.trial_ends_at);
+  if (isNaN(end.getTime())) {
+    pill.classList.add('hidden');
+    return;
+  }
+  const daysLeft = Math.ceil((end.getTime() - Date.now()) / 86400000);
+  pill.classList.remove('hidden', 'gray', 'yellow', 'red');
+
+  let color, text, extra = '';
+  if (daysLeft >= 4) {
+    color = 'gray';
+    text = 'Trial: ' + daysLeft + ' days left';
+  } else if (daysLeft === 2 || daysLeft === 3) {
+    color = 'yellow';
+    text = 'Trial: ' + daysLeft + ' days left';
+  } else if (daysLeft === 1) {
+    color = 'red';
+    text = 'Last day of trial';
+  } else {
+    color = 'red';
+    text = 'Trial expired — upgrade to continue';
+    extra = '<button class="trial-pill-upgrade" onclick="event.stopPropagation();openUpgradeModal()">Upgrade</button>';
+  }
+  pill.classList.add(color);
+  pill.innerHTML = '<span>' + esc(text) + '</span>' + extra;
+}
+
+function openUpgradeModal() {
+  // Placeholder: Stripe checkout will drop in here.
+  const id = 'upgradeModal';
+  let modal = document.getElementById(id);
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = id;
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+      <div class="modal">
+        <button class="modal-close" onclick="closeModal('${id}')">&times;</button>
+        <div class="modal-icon">&#128640;</div>
+        <div class="modal-title">Upgrade to Coreline Pro</div>
+        <div class="modal-sub">Coming soon. Keep your AI running on Coreline's infrastructure once your trial ends. We'll notify you the moment billing is live.</div>
+        <button class="connect-btn" onclick="closeModal('${id}')">Got it</button>
+      </div>`;
+    document.body.appendChild(modal);
+  } else {
+    modal.classList.remove('hidden');
+  }
+}
+
+// ============================================
+// EMPTY-STATE HERO (war room)
+// ============================================
+
+let warroomHeroDismissed = false;
+
+function renderEmptyStateHero() {
+  const hero = document.getElementById('warroomHero');
+  if (!hero) return;
+  const pipelineEmpty = (cachedJobs.length === 0 && cachedContacts.length === 0);
+  if (warroomHeroDismissed || !pipelineEmpty) {
+    hero.classList.add('hidden');
+    return;
+  }
+  hero.classList.remove('hidden');
+}
+
+function dismissWarroomHero() {
+  warroomHeroDismissed = true;
+  const hero = document.getElementById('warroomHero');
+  if (hero) hero.classList.add('hidden');
+}
+
+async function copyHeroPrompt(text) {
   try {
-    // Save profile one final time
-    await saveOnboardingProfile();
-
-    // Mark onboarding complete
-    await api('/users/onboarding-complete', { method: 'POST' });
-
-    hideOnboarding();
-    showToast('Welcome to Core Line! Your war room is ready.', 'success');
-    loadAllData();
+    await navigator.clipboard.writeText(text);
+    showToast('Prompt copied. Paste it into your AI client.', 'success');
   } catch (err) {
-    showToast('Failed to complete onboarding: ' + err.message, 'error');
+    showToast('Copy failed — select the text manually', 'error');
   }
 }
 

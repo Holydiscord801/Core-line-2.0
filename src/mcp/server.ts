@@ -29,6 +29,13 @@ import type {
   BulkImportJobsParams,
   TimerType,
   PostingStatus,
+  UserPreferences,
+  JobTrack,
+  SetProfileParams,
+  SetResumeTextParams,
+  SetPreferencesParams,
+  SetTargetCompaniesParams,
+  SetJobTracksParams,
 } from '../types/index.js';
 import crypto from 'crypto';
 import { readFileSync } from 'fs';
@@ -66,7 +73,7 @@ async function authenticateApiKey(apiKey: string): Promise<string | null> {
 
   const { data, error } = await supabase
     .from('v2_api_keys')
-    .select('user_id')
+    .select('user_id, paired_at')
     .eq('key_hash', keyHash)
     .single();
 
@@ -74,10 +81,16 @@ async function authenticateApiKey(apiKey: string): Promise<string | null> {
     return null;
   }
 
-  // Update last_used_at
+  // First-pair detection: set paired_at only once, on first successful auth. See proposal §3.2.
+  const now = new Date().toISOString();
+  const updates: { last_used_at: string; paired_at?: string } = { last_used_at: now };
+  if (data.paired_at === null) {
+    updates.paired_at = now;
+  }
+
   await supabase
     .from('v2_api_keys')
-    .update({ last_used_at: new Date().toISOString() })
+    .update(updates)
     .eq('key_hash', keyHash);
 
   return data.user_id;
@@ -712,6 +725,177 @@ const tools: Tool[] = [
       required: ['id'],
     },
   },
+  // ============================================================================
+  // Onboarding write tools (PLAYBOOK §14)
+  //
+  // These are the conversational-onboarding write tools. When get_profile()
+  // returns onboarding_complete:false, the AI walks the user through intake
+  // using this sequence: set_resume_text → set_profile → set_preferences →
+  // set_target_companies → set_job_tracks → complete_onboarding.
+  //
+  // Every set_* tool bumps v2_users.preferences_version and runs the
+  // synchronous propagation cycle inside the same request (re-score pipeline,
+  // invalidate stale cover letters, re-generate battle plan). There is NO
+  // background worker — propagation blocks the MCP call for ~200-500ms on a
+  // typical small pipeline. Every set_* tool also writes an audit row to
+  // v2_profile_changes so the user can always ask "why did my pipeline change?"
+  // ============================================================================
+  {
+    name: 'set_profile',
+    description: 'Onboarding write tool. Sets the user\'s basic profile fields (full name, current title, city, state, years of experience). Use this after set_resume_text when the AI has extracted these values from the resume and the user has confirmed them. full_name is stored at the top level; current_title/city/state/years_experience are stored inside the preferences JSONB. This call bumps preferences_version and synchronously re-scores the pipeline before returning. Writes an audit row to v2_profile_changes.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        full_name: {
+          type: 'string',
+          description: 'User\'s full name, e.g. "Micah Baird".',
+        },
+        current_title: {
+          type: 'string',
+          description: 'Current job title, e.g. "VP Engineering".',
+        },
+        city: {
+          type: 'string',
+          description: 'Current city, e.g. "Denver".',
+        },
+        state: {
+          type: 'string',
+          description: 'Current state or region, e.g. "CO".',
+        },
+        years_experience: {
+          type: 'number',
+          description: 'Years of total professional experience.',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'set_resume_text',
+    description: 'Onboarding write tool. Sets the user\'s resume_text (plain text of the resume the user pasted or their AI extracted). ALSO triggers the 7-day trial timer on the FIRST call (idempotent — subsequent calls do NOT reset the trial, they only overwrite the resume text). Returns the trial start/end so the AI can tell the user when their trial began and how much time is left. This call bumps preferences_version, invalidates stale cover letters for unsent jobs, and synchronously re-scores the pipeline before returning. Writes an audit row to v2_profile_changes.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        resume_text: {
+          type: 'string',
+          description: 'Full plaintext of the user\'s resume. Coreline never sees the original file — the AI extracts and passes the clean text.',
+        },
+      },
+      required: ['resume_text'],
+    },
+  },
+  {
+    name: 'set_preferences',
+    description: 'Onboarding write tool. Partial patch of v2_users.preferences — pass only the fields that changed. Deep-merges with the existing preferences JSONB, so calling with {salary_floor: 180000} does NOT erase role_types, locations, etc. Supported fields: role_types (array), salary_floor (number), locations (array), remote_ok (bool), industries (array), timezone (IANA), auto_send_enabled (bool). For target_companies and job_tracks use the dedicated tools. This call bumps preferences_version and synchronously re-scores the pipeline before returning. Writes an audit row to v2_profile_changes per changed field.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        role_types: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Target job title keywords, e.g. ["VP Engineering", "CTO", "Director of Engineering"].',
+        },
+        salary_floor: {
+          type: 'number',
+          description: 'Minimum acceptable annual salary in USD.',
+        },
+        locations: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Preferred locations, e.g. ["Denver, CO", "Salt Lake City, UT"].',
+        },
+        remote_ok: {
+          type: 'boolean',
+          description: 'Whether remote roles are acceptable.',
+        },
+        industries: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Preferred industries, e.g. ["fintech", "healthtech", "b2b saas"].',
+        },
+        timezone: {
+          type: 'string',
+          description: 'IANA timezone, e.g. "America/Denver". Used by the user\'s AI to schedule its own sweeps.',
+        },
+        auto_send_enabled: {
+          type: 'boolean',
+          description: 'Whether outreach drafts should be auto-sent (true) or only saved as drafts for user review (false). Applies to new drafts only.',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'set_target_companies',
+    description: 'Onboarding write tool. Replaces v2_users.preferences.target_companies with the provided array — these are the user\'s dream companies (names or domains). Used by battle plan ranking, search prioritization, and outreach prioritization. This call bumps preferences_version, immediately invalidates the current battle plan so it will regenerate on next get_battle_plan call, and synchronously re-scores the pipeline before returning. Writes an audit row to v2_profile_changes.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        target_companies: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Ordered list of target company names or domains, e.g. ["Stripe", "Figma", "vercel.com"]. Pass the full list every call — this is a replace, not a merge.',
+        },
+      },
+      required: ['target_companies'],
+    },
+  },
+  {
+    name: 'set_job_tracks',
+    description: 'Onboarding write tool. Replaces v2_users.preferences.job_tracks with the provided array. Each track is a separate "lane" the user wants to pursue (primary career track + optional dream lanes). Exactly zero or one track may have is_primary:true — the tool rejects arrays with two or more primary tracks. Used by search criteria per track, battle plan segmentation, and scoring context. This call bumps preferences_version, invalidates the current battle plan, and synchronously re-scores the pipeline before returning. Writes an audit row to v2_profile_changes.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        job_tracks: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              name: {
+                type: 'string',
+                description: 'Human-readable track name, e.g. "VP Eng (primary)" or "CTO at seed-stage fintech".',
+              },
+              role_types: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Role title keywords specific to this track.',
+              },
+              industries: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Industries specific to this track (optional).',
+              },
+              companies: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Target companies specific to this track (optional).',
+              },
+              salary_floor: {
+                type: 'number',
+                description: 'Salary floor specific to this track (optional; overrides the top-level floor for this track only).',
+              },
+              is_primary: {
+                type: 'boolean',
+                description: 'Exactly one track should be the primary track. Pass false for all others.',
+              },
+            },
+            required: ['name', 'role_types', 'is_primary'],
+          },
+          description: 'Full list of tracks. Pass the complete array every call — this is a replace, not a merge.',
+        },
+      },
+      required: ['job_tracks'],
+    },
+  },
+  {
+    name: 'complete_onboarding',
+    description: 'Onboarding write tool. Flips v2_users.onboarding_complete to true. Call this as the final step of the PLAYBOOK §14 intake sequence, after set_resume_text, set_profile, set_preferences, set_target_companies, and set_job_tracks have all been called. Returns a summary of what was set plus a single human-readable sentence (summary_text) the AI can read back to the user. Does NOT bump preferences_version and does NOT run propagation (nothing preference-affecting changed).',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
 ];
 
 // ============================================
@@ -1203,26 +1387,21 @@ async function searchJobs(params: SearchJobsParams): Promise<object> {
   };
 }
 
-async function scoreJob(params: ScoreJobParams): Promise<ScoreResult> {
-  const userId = requireAuth();
-  const profile = await getProfile();
-  const prefs = profile.preferences || {};
-
-  let jobData = params;
-
-  // Load from DB if job_id provided
-  if (params.job_id) {
-    const { data } = await supabase
-      .from('v2_jobs')
-      .select('*')
-      .eq('id', params.job_id)
-      .eq('user_id', userId)
-      .single();
-    if (data) {
-      jobData = { ...params, ...data };
-    }
-  }
-
+// Pure scoring function. Takes the job fields and a UserPreferences bag and
+// returns a full ScoreResult. Factored out of scoreJob() so the synchronous
+// propagation cycle (see runPropagationCycle) can re-score every job in the
+// pipeline against fresh preferences without duplicating the weight logic.
+function computeFitScoreFromPrefs(
+  jobData: {
+    title?: string | null;
+    salary_min?: number | null;
+    salary_max?: number | null;
+    location?: string | null;
+    remote?: boolean | null;
+    description?: string | null;
+  },
+  prefs: UserPreferences
+): ScoreResult {
   // Title match (25 points)
   const targetRoles = prefs.role_types || [];
   const titleLower = (jobData.title || '').toLowerCase();
@@ -1293,7 +1472,7 @@ async function scoreJob(params: ScoreJobParams): Promise<ScoreResult> {
 
   const fitScore = titleScore + salaryScore + remoteScore + companyScore + industryScore + reportingScore;
 
-  const result: ScoreResult = {
+  return {
     fit_score: Math.min(100, fitScore),
     breakdown: {
       title_match: titleScore,
@@ -1307,12 +1486,42 @@ async function scoreJob(params: ScoreJobParams): Promise<ScoreResult> {
                      fitScore >= 50 ? 'Moderate match. Review before investing time.' :
                      'Weak match. Consider skipping unless other factors are compelling.',
   };
+}
 
-  // Update job in DB if job_id provided
+async function scoreJob(params: ScoreJobParams): Promise<ScoreResult> {
+  const userId = requireAuth();
+  const profile = await getProfile();
+  const prefs: UserPreferences = profile.preferences || {};
+
+  let jobData: ScoreJobParams = params;
+
+  // Load from DB if job_id provided
+  if (params.job_id) {
+    const { data } = await supabase
+      .from('v2_jobs')
+      .select('*')
+      .eq('id', params.job_id)
+      .eq('user_id', userId)
+      .single();
+    if (data) {
+      jobData = { ...params, ...data };
+    }
+  }
+
+  const result = computeFitScoreFromPrefs(jobData, prefs);
+
+  // Update job in DB if job_id provided. Also snapshot the current
+  // preferences_version so reads can detect stale scores via
+  // (preferences_version_at_score < v2_users.preferences_version).
+  // See proposal §5.3.
   if (params.job_id) {
     await supabase
       .from('v2_jobs')
-      .update({ fit_score: result.fit_score, match_score: result.fit_score })
+      .update({
+        fit_score: result.fit_score,
+        match_score: result.fit_score,
+        preferences_version_at_score: profile.preferences_version ?? 0,
+      })
       .eq('id', params.job_id)
       .eq('user_id', userId);
   }
@@ -1963,6 +2172,723 @@ async function dismissHotSignal(id: string): Promise<object> {
 }
 
 // ============================================
+// Onboarding write tools — helpers, propagation, handlers
+// (proposal §3.3, §5 — synchronous in-request propagation, no workers)
+// ============================================
+
+// Fields on the preferences JSONB that trigger the propagation cycle when
+// changed. full_name and resume_text are tracked separately at the top level
+// but also count as propagation triggers.
+const PREF_FIELDS_THAT_TRIGGER_PROPAGATION = new Set<string>([
+  'resume_text',
+  'full_name',
+  'role_types',
+  'salary_floor',
+  'locations',
+  'remote_ok',
+  'industries',
+  'target_companies',
+  'job_tracks',
+]);
+
+// Battle-plan invalidation trigger fields. When the user changes which
+// companies or tracks they care about, the most recent battle plan is stale
+// and should be regenerated on the next get_battle_plan() call (proposal §5.2).
+const PREF_FIELDS_THAT_INVALIDATE_BATTLE_PLAN = new Set<string>([
+  'target_companies',
+  'job_tracks',
+]);
+
+// Shallow-for-scalars, merge-for-objects. We do NOT merge arrays — array
+// fields on UserPreferences (role_types, locations, industries,
+// target_companies, job_tracks) are "replace semantics": passing
+// {role_types: ['VP Eng']} replaces the full array, it doesn't append. This
+// matches the PATCH /api/users/profile shallow-overwrite behavior for array
+// fields while still letting partial set_preferences({salary_floor: 180000})
+// calls leave the other preferences untouched.
+function deepMergePreferences(
+  existing: UserPreferences | null | undefined,
+  patch: Partial<UserPreferences>
+): UserPreferences {
+  const merged: UserPreferences = { ...(existing || {}) };
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === undefined) continue;
+    (merged as Record<string, unknown>)[key] = value;
+  }
+  return merged;
+}
+
+// Append a row to v2_profile_changes. Returns the inserted row id so the
+// caller can update the propagation_completed_at / propagation_error columns
+// once the propagation cycle finishes.
+async function writeProfileChangeAudit(
+  userId: string,
+  fieldName: string,
+  oldValue: unknown,
+  newValue: unknown,
+  sourceTool: string,
+  triggeredPropagation: boolean
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('v2_profile_changes')
+    .insert({
+      user_id: userId,
+      field_name: fieldName,
+      old_value: oldValue === undefined ? null : oldValue,
+      new_value: newValue === undefined ? null : newValue,
+      source_tool: sourceTool,
+      triggered_propagation: triggeredPropagation,
+    })
+    .select('id')
+    .single();
+
+  if (error) {
+    // Audit write failure is logged but does not fail the calling tool —
+    // the primary write to v2_users is still the important operation.
+    console.error(`[v2_profile_changes] audit write failed: ${error.message}`);
+    return null;
+  }
+
+  return (data as { id: string }).id;
+}
+
+/**
+ * Synchronous propagation cycle.
+ *
+ * Runs INSIDE the same MCP request that caused the profile change. Blocks
+ * the calling tool for ~200-500ms on a typical small pipeline. There is no
+ * background worker, no setTimeout debouncer, no cron.
+ *
+ * Decision per proposal §5.1: the original design mentioned a 60-second
+ * in-memory debouncer, but a setTimeout-based debouncer inside a stdio MCP
+ * server process that only runs while the user's AI is actively using it
+ * is unreliable — the timer may never fire if the process exits first.
+ * We accept the tradeoff that 4-6 rapid set_preferences calls during
+ * onboarding do 4-6 small re-scoring cycles back-to-back, and run
+ * propagation synchronously inline on every set_* call.
+ *
+ * Behavior:
+ *  1. If changedFields contains any score-affecting field, re-score all
+ *     v2_jobs in status 'new'/'researching'/'applied' against the current
+ *     preferences and write back fit_score + preferences_version_at_score.
+ *  2. If changedFields contains resume_text, also NULL out v2_jobs.cover_letter
+ *     for unsent jobs — marks cover letters stale for lazy regen on next read.
+ *  3. If changedFields contains target_companies or job_tracks, delete today's
+ *     v2_battle_plans row so the next get_battle_plan call generates a fresh
+ *     one (proposal §5.2 — we don't eagerly regen here).
+ *  4. On success, stamp propagation_completed_at on the audit row.
+ *  5. On any error, stamp propagation_error on the audit row but do NOT
+ *     rethrow — propagation is best-effort; the primary write already
+ *     succeeded and the safety net at read time (§5.4) will catch stragglers.
+ */
+async function runPropagationCycle(
+  userId: string,
+  changedFields: Set<string>,
+  sourceTool: string,
+  auditLogId?: string | null
+): Promise<void> {
+  try {
+    const shouldRescore = Array.from(changedFields).some(f =>
+      PREF_FIELDS_THAT_TRIGGER_PROPAGATION.has(f)
+    );
+    const shouldInvalidateBattlePlan = Array.from(changedFields).some(f =>
+      PREF_FIELDS_THAT_INVALIDATE_BATTLE_PLAN.has(f)
+    );
+    const shouldInvalidateCoverLetters = changedFields.has('resume_text');
+
+    // 1. Re-score the pipeline.
+    if (shouldRescore) {
+      // Fetch fresh profile (we just wrote to v2_users so preferences_version
+      // is already bumped — we want the NEW version for the snapshot).
+      const { data: userRow, error: userErr } = await supabase
+        .from('v2_users')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (userErr || !userRow) {
+        throw new Error(`propagation: failed to reload user: ${userErr?.message || 'not found'}`);
+      }
+
+      const freshProfile = userRow as V2User;
+      const freshPrefs: UserPreferences = freshProfile.preferences || {};
+      const freshVersion = freshProfile.preferences_version ?? 0;
+
+      const { data: jobs, error: jobsErr } = await supabase
+        .from('v2_jobs')
+        .select('id, title, salary_min, salary_max, location, remote, description')
+        .eq('user_id', userId)
+        .in('status', ['new', 'researching', 'applied']);
+
+      if (jobsErr) {
+        throw new Error(`propagation: failed to fetch jobs: ${jobsErr.message}`);
+      }
+
+      const jobRows = (jobs || []) as Array<{
+        id: string;
+        title: string | null;
+        salary_min: number | null;
+        salary_max: number | null;
+        location: string | null;
+        remote: boolean | null;
+        description: string | null;
+      }>;
+
+      // Re-score each job in JS, then issue one UPDATE per job. Bounded
+      // work — Coreline users typically have <200 jobs in the pipeline, so
+      // this is ~200 UPDATE calls on the worst case (few hundred ms via
+      // supabase-js). A true bulk-update would need raw SQL; Supabase
+      // client doesn't expose a bulk-update-with-per-row-values primitive.
+      for (const job of jobRows) {
+        const scored = computeFitScoreFromPrefs(
+          {
+            title: job.title,
+            salary_min: job.salary_min,
+            salary_max: job.salary_max,
+            location: job.location,
+            remote: job.remote,
+            description: job.description,
+          },
+          freshPrefs
+        );
+
+        await supabase
+          .from('v2_jobs')
+          .update({
+            fit_score: scored.fit_score,
+            match_score: scored.fit_score,
+            preferences_version_at_score: freshVersion,
+          })
+          .eq('id', job.id)
+          .eq('user_id', userId);
+      }
+    }
+
+    // 2. Invalidate stale cover letters on resume_text change.
+    if (shouldInvalidateCoverLetters) {
+      await supabase
+        .from('v2_jobs')
+        .update({ cover_letter: null })
+        .eq('user_id', userId)
+        .in('status', ['new', 'researching', 'applied']);
+    }
+
+    // 3. Invalidate today's battle plan on target_companies / job_tracks change.
+    // The next get_battle_plan call will regenerate from scratch.
+    if (shouldInvalidateBattlePlan) {
+      const today = new Date().toISOString().split('T')[0];
+      await supabase
+        .from('v2_battle_plans')
+        .delete()
+        .eq('user_id', userId)
+        .eq('plan_date', today);
+    }
+
+    // 4. Mark the audit row as completed.
+    if (auditLogId) {
+      await supabase
+        .from('v2_profile_changes')
+        .update({ propagation_completed_at: new Date().toISOString() })
+        .eq('id', auditLogId);
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'unknown error';
+    console.error(`[runPropagationCycle] ${sourceTool} failed for user ${userId}: ${message}`);
+    // Best-effort audit update. Swallow errors from the audit update itself.
+    if (auditLogId) {
+      await supabase
+        .from('v2_profile_changes')
+        .update({ propagation_error: message })
+        .eq('id', auditLogId)
+        .then(() => undefined, () => undefined);
+    }
+    // Do NOT rethrow — propagation is best-effort.
+  }
+}
+
+// --- Tool handlers -----------------------------------------------------------
+
+async function setProfile(params: SetProfileParams): Promise<object> {
+  const userId = requireAuth();
+  const current = await getProfile();
+  const currentPrefs: UserPreferences = current.preferences || {};
+
+  const changedFields = new Set<string>();
+  const updates: {
+    full_name?: string | null;
+    preferences?: UserPreferences;
+    preferences_version?: number;
+    updated_at?: string;
+  } = {};
+
+  // Top-level full_name
+  if (params.full_name !== undefined && params.full_name !== current.full_name) {
+    updates.full_name = params.full_name;
+    await writeProfileChangeAudit(
+      userId,
+      'full_name',
+      current.full_name,
+      params.full_name,
+      'set_profile',
+      true
+    );
+    changedFields.add('full_name');
+  }
+
+  // Preference subfields: current_title, city, state, years_experience
+  const prefPatch: Partial<UserPreferences> = {};
+  const prefSubfields: Array<keyof UserPreferences> = [
+    'current_title',
+    'city',
+    'state',
+    'years_experience',
+  ];
+
+  for (const field of prefSubfields) {
+    const value = params[field as keyof SetProfileParams];
+    if (value !== undefined) {
+      const existing = (currentPrefs as Record<string, unknown>)[field];
+      if (value !== existing) {
+        (prefPatch as Record<string, unknown>)[field] = value;
+        await writeProfileChangeAudit(
+          userId,
+          `preferences.${field}`,
+          existing ?? null,
+          value,
+          'set_profile',
+          true
+        );
+        changedFields.add(field as string);
+      }
+    }
+  }
+
+  if (Object.keys(prefPatch).length > 0) {
+    updates.preferences = deepMergePreferences(currentPrefs, prefPatch);
+  }
+
+  if (changedFields.size === 0) {
+    return {
+      ok: true,
+      changed: false,
+      message: 'No changes detected — profile already matches the provided values.',
+    };
+  }
+
+  // Bump preferences_version monotonically.
+  updates.preferences_version = (current.preferences_version ?? 0) + 1;
+  updates.updated_at = new Date().toISOString();
+
+  const { error } = await supabase
+    .from('v2_users')
+    .update(updates)
+    .eq('id', userId);
+
+  if (error) {
+    throw new Error(`set_profile: failed to write user: ${error.message}`);
+  }
+
+  // Run propagation synchronously inline.
+  // (full_name counts as a propagation trigger per proposal §4 — affects
+  // outreach sign-off. current_title/city/state/years_experience do not
+  // affect scoring today but we still run the cycle for consistency; it
+  // is a cheap no-op re-score against unchanged preferences.)
+  const auditLogId = null; // Per-field audit rows above; no single row to stamp.
+  await runPropagationCycle(userId, changedFields, 'set_profile', auditLogId);
+
+  return {
+    ok: true,
+    changed: true,
+    changed_fields: Array.from(changedFields),
+    preferences_version: updates.preferences_version,
+    message: 'Profile updated. Pipeline re-scored against current preferences.',
+  };
+}
+
+async function setResumeText(params: SetResumeTextParams): Promise<object> {
+  const userId = requireAuth();
+
+  if (!params.resume_text || typeof params.resume_text !== 'string' || params.resume_text.trim().length === 0) {
+    throw new Error('set_resume_text: resume_text is required and must be a non-empty string.');
+  }
+
+  const current = await getProfile();
+
+  const oldLen = (current.resume_text || '').length;
+  const newLen = params.resume_text.length;
+
+  const auditId = await writeProfileChangeAudit(
+    userId,
+    'resume_text',
+    // Store length snapshot instead of full text to keep audit table compact —
+    // the full text is on v2_users already, this is just a change marker.
+    { length: oldLen },
+    { length: newLen },
+    'set_resume_text',
+    true
+  );
+
+  const updates: {
+    resume_text: string;
+    preferences_version: number;
+    updated_at: string;
+    trial_started_at?: string;
+    trial_ends_at?: string;
+  } = {
+    resume_text: params.resume_text,
+    preferences_version: (current.preferences_version ?? 0) + 1,
+    updated_at: new Date().toISOString(),
+  };
+
+  // Trial timer — proposal §8 Q4.
+  // First call: start the clock. Subsequent calls: leave it alone.
+  let trialJustStarted = false;
+  if (current.trial_started_at === null) {
+    const now = new Date();
+    const days = current.trial_length_days ?? 7;
+    const endsAt = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
+    updates.trial_started_at = now.toISOString();
+    updates.trial_ends_at = endsAt.toISOString();
+    trialJustStarted = true;
+  }
+
+  const { error } = await supabase
+    .from('v2_users')
+    .update(updates)
+    .eq('id', userId);
+
+  if (error) {
+    throw new Error(`set_resume_text: failed to write user: ${error.message}`);
+  }
+
+  await runPropagationCycle(userId, new Set(['resume_text']), 'set_resume_text', auditId);
+
+  // Load fresh trial dates for the response (so the AI can tell the user
+  // exactly when the clock started and when it ends).
+  const { data: fresh } = await supabase
+    .from('v2_users')
+    .select('trial_started_at, trial_ends_at, trial_length_days, preferences_version')
+    .eq('id', userId)
+    .single();
+
+  const freshRow = (fresh || {}) as {
+    trial_started_at: string | null;
+    trial_ends_at: string | null;
+    trial_length_days: number | null;
+    preferences_version: number | null;
+  };
+
+  let trialMessage: string;
+  if (trialJustStarted) {
+    trialMessage = `Your ${freshRow.trial_length_days ?? 7}-day trial just started. It ends ${freshRow.trial_ends_at ?? 'soon'}.`;
+  } else if (freshRow.trial_ends_at) {
+    const msLeft = new Date(freshRow.trial_ends_at).getTime() - Date.now();
+    const daysLeft = Math.max(0, Math.ceil(msLeft / (24 * 60 * 60 * 1000)));
+    trialMessage = `Your trial is still running (~${daysLeft} day${daysLeft === 1 ? '' : 's'} left). Resume text updated.`;
+  } else {
+    trialMessage = 'Resume text updated.';
+  }
+
+  return {
+    ok: true,
+    resume_length: newLen,
+    trial_started_at: freshRow.trial_started_at,
+    trial_ends_at: freshRow.trial_ends_at,
+    trial_just_started: trialJustStarted,
+    preferences_version: freshRow.preferences_version,
+    message: trialMessage,
+  };
+}
+
+async function setPreferences(params: SetPreferencesParams): Promise<object> {
+  const userId = requireAuth();
+  const current = await getProfile();
+  const currentPrefs: UserPreferences = current.preferences || {};
+
+  const changedFields = new Set<string>();
+  const patch: Partial<UserPreferences> = {};
+
+  // Supported partial-patch fields per proposal §3.3 set_preferences row.
+  const supportedFields: Array<keyof SetPreferencesParams> = [
+    'role_types',
+    'salary_floor',
+    'locations',
+    'remote_ok',
+    'industries',
+    'timezone',
+    'auto_send_enabled',
+  ];
+
+  for (const field of supportedFields) {
+    const value = params[field];
+    if (value !== undefined) {
+      const existing = (currentPrefs as Record<string, unknown>)[field];
+      if (JSON.stringify(existing) !== JSON.stringify(value)) {
+        (patch as Record<string, unknown>)[field] = value;
+        await writeProfileChangeAudit(
+          userId,
+          `preferences.${field}`,
+          existing ?? null,
+          value,
+          'set_preferences',
+          PREF_FIELDS_THAT_TRIGGER_PROPAGATION.has(field as string)
+        );
+        changedFields.add(field as string);
+      }
+    }
+  }
+
+  if (changedFields.size === 0) {
+    return {
+      ok: true,
+      changed: false,
+      message: 'No changes detected — preferences already match the provided values.',
+    };
+  }
+
+  const mergedPrefs = deepMergePreferences(currentPrefs, patch);
+  const newVersion = (current.preferences_version ?? 0) + 1;
+
+  const { error } = await supabase
+    .from('v2_users')
+    .update({
+      preferences: mergedPrefs,
+      preferences_version: newVersion,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', userId);
+
+  if (error) {
+    throw new Error(`set_preferences: failed to write user: ${error.message}`);
+  }
+
+  await runPropagationCycle(userId, changedFields, 'set_preferences', null);
+
+  return {
+    ok: true,
+    changed: true,
+    changed_fields: Array.from(changedFields),
+    preferences: mergedPrefs,
+    preferences_version: newVersion,
+    message: 'Preferences updated. Pipeline re-scored against new preferences.',
+  };
+}
+
+async function setTargetCompanies(params: SetTargetCompaniesParams): Promise<object> {
+  const userId = requireAuth();
+
+  if (!Array.isArray(params.target_companies)) {
+    throw new Error('set_target_companies: target_companies must be an array of strings.');
+  }
+  for (const c of params.target_companies) {
+    if (typeof c !== 'string') {
+      throw new Error('set_target_companies: every entry in target_companies must be a string.');
+    }
+  }
+
+  const current = await getProfile();
+  const currentPrefs: UserPreferences = current.preferences || {};
+  const oldValue = currentPrefs.target_companies || [];
+
+  if (JSON.stringify(oldValue) === JSON.stringify(params.target_companies)) {
+    return {
+      ok: true,
+      changed: false,
+      target_companies: oldValue,
+      message: 'No changes detected — target_companies already match the provided list.',
+    };
+  }
+
+  const auditId = await writeProfileChangeAudit(
+    userId,
+    'preferences.target_companies',
+    oldValue,
+    params.target_companies,
+    'set_target_companies',
+    true
+  );
+
+  const mergedPrefs = deepMergePreferences(currentPrefs, {
+    target_companies: params.target_companies,
+  });
+  const newVersion = (current.preferences_version ?? 0) + 1;
+
+  const { error } = await supabase
+    .from('v2_users')
+    .update({
+      preferences: mergedPrefs,
+      preferences_version: newVersion,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', userId);
+
+  if (error) {
+    throw new Error(`set_target_companies: failed to write user: ${error.message}`);
+  }
+
+  await runPropagationCycle(userId, new Set(['target_companies']), 'set_target_companies', auditId);
+
+  return {
+    ok: true,
+    changed: true,
+    target_companies: params.target_companies,
+    preferences_version: newVersion,
+    message: 'Target companies updated. Pipeline re-scored and today\'s battle plan invalidated.',
+  };
+}
+
+async function setJobTracks(params: SetJobTracksParams): Promise<object> {
+  const userId = requireAuth();
+
+  if (!Array.isArray(params.job_tracks)) {
+    throw new Error('set_job_tracks: job_tracks must be an array of track objects.');
+  }
+
+  // Validate each track minimally and enforce the "at most one primary" rule.
+  let primaryCount = 0;
+  for (const track of params.job_tracks) {
+    if (!track || typeof track !== 'object') {
+      throw new Error('set_job_tracks: every entry in job_tracks must be an object.');
+    }
+    if (typeof track.name !== 'string' || track.name.length === 0) {
+      throw new Error('set_job_tracks: every track must have a non-empty string name.');
+    }
+    if (!Array.isArray(track.role_types)) {
+      throw new Error(`set_job_tracks: track "${track.name}" is missing role_types array.`);
+    }
+    if (typeof track.is_primary !== 'boolean') {
+      throw new Error(`set_job_tracks: track "${track.name}" is missing is_primary boolean.`);
+    }
+    if (track.is_primary) {
+      primaryCount += 1;
+    }
+  }
+
+  if (primaryCount > 1) {
+    throw new Error(
+      `set_job_tracks: only one track may have is_primary:true, got ${primaryCount}.`
+    );
+  }
+
+  const current = await getProfile();
+  const currentPrefs: UserPreferences = current.preferences || {};
+  const oldValue = currentPrefs.job_tracks || [];
+
+  if (JSON.stringify(oldValue) === JSON.stringify(params.job_tracks)) {
+    return {
+      ok: true,
+      changed: false,
+      job_tracks: oldValue,
+      message: 'No changes detected — job_tracks already match the provided list.',
+    };
+  }
+
+  const auditId = await writeProfileChangeAudit(
+    userId,
+    'preferences.job_tracks',
+    oldValue,
+    params.job_tracks,
+    'set_job_tracks',
+    true
+  );
+
+  const mergedPrefs = deepMergePreferences(currentPrefs, {
+    job_tracks: params.job_tracks,
+  });
+  const newVersion = (current.preferences_version ?? 0) + 1;
+
+  const { error } = await supabase
+    .from('v2_users')
+    .update({
+      preferences: mergedPrefs,
+      preferences_version: newVersion,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', userId);
+
+  if (error) {
+    throw new Error(`set_job_tracks: failed to write user: ${error.message}`);
+  }
+
+  await runPropagationCycle(userId, new Set(['job_tracks']), 'set_job_tracks', auditId);
+
+  return {
+    ok: true,
+    changed: true,
+    job_tracks: params.job_tracks,
+    primary_track:
+      params.job_tracks.find((t: JobTrack) => t.is_primary)?.name ?? null,
+    preferences_version: newVersion,
+    message: 'Job tracks updated. Pipeline re-scored and today\'s battle plan invalidated.',
+  };
+}
+
+async function completeOnboarding(): Promise<object> {
+  const userId = requireAuth();
+  const current = await getProfile();
+
+  // Idempotent — if already complete, still return a fresh summary.
+  if (!current.onboarding_complete) {
+    await writeProfileChangeAudit(
+      userId,
+      'onboarding_complete',
+      false,
+      true,
+      'complete_onboarding',
+      false // does NOT trigger propagation — no preference-affecting change
+    );
+
+    const { error } = await supabase
+      .from('v2_users')
+      .update({
+        onboarding_complete: true,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', userId);
+
+    if (error) {
+      throw new Error(`complete_onboarding: failed to write user: ${error.message}`);
+    }
+  }
+
+  // Reload for the summary payload.
+  const fresh = await getProfile();
+  const prefs: UserPreferences = fresh.preferences || {};
+
+  const roleCount = (prefs.role_types || []).length;
+  const targetCompanyCount = (prefs.target_companies || []).length;
+  const jobTrackCount = (prefs.job_tracks || []).length;
+  const primaryTrack = (prefs.job_tracks || []).find((t: JobTrack) => t.is_primary);
+  const salaryFloorStr = prefs.salary_floor
+    ? `>= $${prefs.salary_floor.toLocaleString()}`
+    : 'not set';
+
+  const summary_text = [
+    `Onboarding complete for ${fresh.full_name || 'user'}.`,
+    `Targeting ${roleCount} role type${roleCount === 1 ? '' : 's'} at salaries ${salaryFloorStr},`,
+    `with ${targetCompanyCount} target compan${targetCompanyCount === 1 ? 'y' : 'ies'}`,
+    `and ${jobTrackCount} ${jobTrackCount === 1 ? 'track' : 'tracks'}${primaryTrack ? ` (primary: ${primaryTrack.name})` : ''}.`,
+    fresh.trial_ends_at ? `Your ${fresh.trial_length_days ?? 7}-day trial ends ${fresh.trial_ends_at.split('T')[0]}.` : '',
+  ].filter(Boolean).join(' ');
+
+  return {
+    full_name: fresh.full_name,
+    onboarding_complete: fresh.onboarding_complete,
+    trial_started_at: fresh.trial_started_at,
+    trial_ends_at: fresh.trial_ends_at,
+    preferences: {
+      role_types: prefs.role_types || [],
+      salary_floor: prefs.salary_floor ?? null,
+      locations: prefs.locations || [],
+      industries: prefs.industries || [],
+      target_companies: prefs.target_companies || [],
+      job_tracks: prefs.job_tracks || [],
+    },
+    summary_text,
+  };
+}
+
+// ============================================
 // Server Setup
 // ============================================
 
@@ -2191,6 +3117,50 @@ export async function createMCPServer(): Promise<Server> {
 
         case 'dismiss_hot_signal':
           result = await dismissHotSignal(args?.id as string);
+          break;
+
+        case 'set_profile':
+          result = await setProfile({
+            full_name: args?.full_name as string | undefined,
+            current_title: args?.current_title as string | undefined,
+            city: args?.city as string | undefined,
+            state: args?.state as string | undefined,
+            years_experience: args?.years_experience as number | undefined,
+          });
+          break;
+
+        case 'set_resume_text':
+          result = await setResumeText({
+            resume_text: args?.resume_text as string,
+          });
+          break;
+
+        case 'set_preferences':
+          result = await setPreferences({
+            role_types: args?.role_types as string[] | undefined,
+            salary_floor: args?.salary_floor as number | undefined,
+            locations: args?.locations as string[] | undefined,
+            remote_ok: args?.remote_ok as boolean | undefined,
+            industries: args?.industries as string[] | undefined,
+            timezone: args?.timezone as string | undefined,
+            auto_send_enabled: args?.auto_send_enabled as boolean | undefined,
+          });
+          break;
+
+        case 'set_target_companies':
+          result = await setTargetCompanies({
+            target_companies: args?.target_companies as string[],
+          });
+          break;
+
+        case 'set_job_tracks':
+          result = await setJobTracks({
+            job_tracks: args?.job_tracks as JobTrack[],
+          });
+          break;
+
+        case 'complete_onboarding':
+          result = await completeOnboarding();
           break;
 
         default:

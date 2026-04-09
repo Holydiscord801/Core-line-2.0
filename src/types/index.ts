@@ -4,12 +4,33 @@
 // User Preferences
 // ============================================
 
+export interface JobTrack {
+  name: string;
+  role_types: string[];
+  industries?: string[];
+  companies?: string[];
+  salary_floor?: number;
+  is_primary: boolean;
+}
+
 export interface UserPreferences {
   role_types?: string[];
   salary_floor?: number;
   locations?: string[];
   remote_ok?: boolean;
   industries?: string[];
+  // Extended fields — onboarding redesign (proposal §3.3)
+  timezone?: string;              // IANA, e.g. 'America/Denver'
+  target_companies?: string[];
+  job_tracks?: JobTrack[];
+  auto_send_enabled?: boolean;
+  // Fields populated by set_profile tool (live alongside the top-level V2User
+  // fields; kept in preferences JSONB because migration 012 didn't add them
+  // as top-level columns).
+  current_title?: string;
+  city?: string;
+  state?: string;
+  years_experience?: number;
 }
 
 // ============================================
@@ -28,6 +49,10 @@ export interface V2User {
   autopilot_enabled: boolean;
   review_window_hours: number;
   onboarding_complete: boolean;
+  trial_started_at: string | null;
+  trial_ends_at: string | null;
+  trial_length_days: number;
+  preferences_version: number;
 }
 
 export type JobStatus = 'new' | 'researching' | 'applied' | 'interviewing' | 'offer' | 'closed' | 'rejected';
@@ -389,3 +414,39 @@ export interface AutopilotSettings {
   autopilot_enabled: boolean;
   review_window_hours: number;
 }
+
+// ============================================
+// Onboarding MCP Tool Parameter Types (proposal §3.3)
+// ============================================
+
+export interface SetProfileParams {
+  full_name?: string;
+  current_title?: string;
+  city?: string;
+  state?: string;
+  years_experience?: number;
+}
+
+export interface SetResumeTextParams {
+  resume_text: string;
+}
+
+export interface SetPreferencesParams {
+  role_types?: string[];
+  salary_floor?: number;
+  locations?: string[];
+  remote_ok?: boolean;
+  industries?: string[];
+  timezone?: string;
+  auto_send_enabled?: boolean;
+}
+
+export interface SetTargetCompaniesParams {
+  target_companies: string[];
+}
+
+export interface SetJobTracksParams {
+  job_tracks: JobTrack[];
+}
+
+export type CompleteOnboardingParams = Record<string, never>;

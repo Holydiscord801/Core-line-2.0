@@ -59,6 +59,38 @@ router.get('/api-keys', async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/auth/api-keys/:id/status - Pairing status for a single key (owner-only)
+router.get('/api-keys/:id/status', async (req: Request, res: Response) => {
+  try {
+    const { data, error } = await supabase
+      .from('v2_api_keys')
+      .select('id, name, paired_at, last_used_at')
+      .eq('id', req.params.id)
+      .eq('user_id', req.userId!)
+      .maybeSingle();
+
+    if (error) {
+      res.status(500).json({ error: error.message });
+      return;
+    }
+
+    if (!data) {
+      res.status(404).json({ error: 'API key not found' });
+      return;
+    }
+
+    res.json({
+      id: data.id,
+      name: data.name,
+      paired: data.paired_at !== null,
+      paired_at: data.paired_at,
+      last_used_at: data.last_used_at,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // DELETE /api/auth/api-keys/:id - Revoke an API key
 router.delete('/api-keys/:id', async (req: Request, res: Response) => {
   try {
