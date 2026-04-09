@@ -109,6 +109,15 @@ function requireAuth(): string {
 
 const tools: Tool[] = [
   {
+    name: 'get_status',
+    description: 'Returns the current status of the Core Line server for this user. CRITICAL: You MUST call this tool as your very first action in every new conversation, before doing anything else. If the response indicates onboarding is incomplete, run the §14 onboarding flow immediately. If the response indicates "ready", proceed with the normal §0 welcome flow.',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
+  {
     name: 'get_profile',
     description: 'Returns the user profile including resume summary, job preferences (target roles, salary floor, locations, remote preference), and industries of interest. Use this to understand what kind of jobs to look for and how to tailor outreach.',
     inputSchema: {
@@ -901,6 +910,61 @@ const tools: Tool[] = [
 // ============================================
 // Tool Implementations
 // ============================================
+
+async function getStatus(): Promise<object> {
+  const userId = requireAuth();
+
+  const { data: user, error } = await supabase
+    .from('v2_users')
+    .select('full_name, onboarding_complete, resume_text, preferences')
+    .eq('id', userId)
+    .single();
+
+  if (error || !user) {
+    throw new Error('User not found');
+  }
+
+  if (user.onboarding_complete) {
+    return {
+      status: 'ready',
+      onboarding_complete: true,
+      user_name: user.full_name || null,
+      message: 'Core Line is fully configured. Ready for commands.',
+    };
+  }
+
+  // Determine which onboarding step the user is on based on what's been set.
+  // Steps: 1=greet, 2=resume, 3=profile, 4=roles/salary, 5=locations,
+  //         6=target companies, 7=job tracks, 8=auto-send, 9=demo, 10=schedule, 11=finish
+  let step = 1;
+  const prefs = (user.preferences || {}) as UserPreferences;
+  if (user.resume_text) {
+    step = 3; // resume done, next is profile
+    if (user.full_name) {
+      step = 4; // profile done, next is roles/salary
+      if (prefs.role_types && prefs.role_types.length > 0) {
+        step = 5; // roles done, next is locations
+        if (prefs.locations && prefs.locations.length > 0) {
+          step = 6; // locations done, next is target companies
+          if (prefs.target_companies && prefs.target_companies.length > 0) {
+            step = 7; // targets done, next is job tracks
+            if (prefs.job_tracks && prefs.job_tracks.length > 0) {
+              step = 8; // tracks done, next is auto-send
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return {
+    status: 'action_required',
+    action: 'run_onboarding',
+    onboarding_complete: false,
+    onboarding_step: step,
+    message: 'This user has not completed onboarding. Please run the §14 onboarding conversation immediately before doing anything else.',
+  };
+}
 
 async function getProfile(): Promise<V2User> {
   const userId = requireAuth();
@@ -2896,6 +2960,23 @@ export async function createMCPServer(): Promise<Server> {
   // PLAYBOOK_TEXT is the single source of truth for the operating playbook.
   // Same string is returned by getSystemInstructions() as the fallback tool
   // and delivered here on the MCP handshake so clients receive it automatically.
+  //
+  // A hard directive is prepended so the AI always calls get_status() first,
+  // guaranteeing deterministic onboarding on every cold start.
+  const STARTUP_DIRECTIVE = [
+    '*** CRITICAL STARTUP DIRECTIVE ***',
+    '',
+    'On your FIRST interaction with the user in any new conversation, you MUST call get_status() immediately — before greeting the user, before calling any other tool, before doing anything else.',
+    '',
+    '- If get_status() returns { status: "action_required", action: "run_onboarding" }, you MUST run the §14 onboarding flow before doing anything else. Do not skip this step. Do not greet the user with the normal welcome. Go directly to onboarding.',
+    '- If get_status() returns { status: "ready" }, proceed with the normal §0 First Handshake welcome flow.',
+    '',
+    'This is non-negotiable. The user experience depends on it.',
+    '',
+    '*** END STARTUP DIRECTIVE ***',
+    '',
+  ].join('\n');
+
   const server = new Server(
     {
       name: 'coreline-v2',
@@ -2905,7 +2986,7 @@ export async function createMCPServer(): Promise<Server> {
       capabilities: {
         tools: {},
       },
-      instructions: PLAYBOOK_TEXT,
+      instructions: STARTUP_DIRECTIVE + PLAYBOOK_TEXT,
     }
   );
 
@@ -2922,6 +3003,10 @@ export async function createMCPServer(): Promise<Server> {
       let result: any;
 
       switch (name) {
+        case 'get_status':
+          result = await getStatus();
+          break;
+
         case 'get_profile':
           result = await getProfile();
           break;
