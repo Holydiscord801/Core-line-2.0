@@ -205,11 +205,11 @@ body::before{content:'';position:fixed;top:-200px;left:50%;transform:translateX(
 .connect-ai-section{margin-bottom:18px}
 .connect-ai-section:last-child{margin-bottom:0}
 .connect-ai-section-label{font-size:11px;font-weight:700;letter-spacing:1px;color:var(--dim);text-transform:uppercase;margin-bottom:8px}
-.connect-ai-install p,.connect-ai-schedule p{font-size:13px;color:var(--text);line-height:1.6;margin-bottom:8px}
-.connect-ai-install code,.connect-ai-schedule code{background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:4px;padding:1px 6px;font-family:'Courier New',monospace;font-size:12px;color:var(--accent2)}
+.connect-ai-msg-box{position:relative;margin-top:8px}
+.connect-ai-msg-box .connect-ai-code{white-space:pre-wrap;word-wrap:break-word;padding-bottom:44px}
+.connect-ai-msg-copy{position:absolute;bottom:10px;right:10px;padding:8px 20px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;border:none;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;transition:all .2s;letter-spacing:.3px}
+.connect-ai-msg-copy:hover{filter:brightness(1.15);transform:translateY(-1px)}
 .connect-ai-code{background:#06060b;border:1px solid var(--border);border-radius:8px;padding:12px 14px;font-family:'Courier New',monospace;font-size:12px;color:var(--text);line-height:1.55;overflow-x:auto;white-space:pre;margin-top:6px}
-.connect-ai-limitations{background:rgba(234,179,8,.08);border:1px solid rgba(234,179,8,.3);border-radius:10px;padding:12px 16px;font-size:12px;color:var(--yellow);line-height:1.55}
-.connect-ai-limitations strong{color:var(--yellow)}
 .connect-ai-status{display:flex;align-items:center;justify-content:center;gap:10px;padding:16px;font-size:13px;color:var(--dim);background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:12px;margin-bottom:14px}
 .connect-ai-status.success{color:var(--green);border-color:rgba(34,197,94,.3);background:rgba(34,197,94,.06)}
 .connect-ai-status.timeout{color:var(--yellow);border-color:rgba(234,179,8,.3);background:rgba(234,179,8,.06)}
@@ -1178,8 +1178,8 @@ body.has-hot-banner .topbar{top:48px}
       <div class="connect-ai-logo-row">
         <div class="logo">CORE<span style="color:var(--accent)">LINE</span></div>
       </div>
-      <div class="connect-ai-headline">Connect your AI to Core Line</div>
-      <div class="connect-ai-sub">Core Line is infrastructure. You bring the AI. Once you pair your AI client, it sets up your profile, runs your job search, and drafts your outreach. You just watch it work.</div>
+      <div class="connect-ai-headline">Your AI runs your job search. You watch it work.</div>
+      <div class="connect-ai-sub">Core Line is your career engine. Pick the AI you already use, copy one message, paste it into a chat. Your AI handles the rest — profile, job hunting, outreach, follow-ups — while you sleep.</div>
 
       <div class="connect-ai-key-box">
         <div class="connect-ai-key-label">Your API Key</div>
@@ -1190,7 +1190,7 @@ body.has-hot-banner .topbar{top:48px}
         <div class="connect-ai-key-warning hidden" id="cnKeyWarning">Save this now. It will not be shown again.</div>
       </div>
 
-      <div class="connect-ai-picker-label">Pick your AI client</div>
+      <div class="connect-ai-picker-label">1. Pick your AI &nbsp; 2. Copy the message &nbsp; 3. Paste it into a chat</div>
       <div class="connect-ai-groups">
         <div>
           <div class="connect-ai-group-label">Chat apps</div>
@@ -3704,6 +3704,18 @@ async function copyConnectKey() {
   }
 }
 
+async function copyClientMsg(elId) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  try {
+    await navigator.clipboard.writeText(el.textContent);
+    const btn = el.parentElement.querySelector('.connect-ai-msg-copy');
+    if (btn) { btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = 'Copy Message'; }, 2000); }
+  } catch (err) {
+    showToast('Copy failed — select the text and copy manually', 'error');
+  }
+}
+
 function selectAiClient(clientName) {
   currentAiClient = clientName;
   document.querySelectorAll('.connect-ai-tab').forEach(t => {
@@ -3716,167 +3728,66 @@ function selectAiClient(clientName) {
 }
 
 function renderClientConfig(clientName, apiKey) {
-  const keyPlaceholder = apiKey || 'YOUR_API_KEY_WILL_APPEAR_HERE';
+  const keyPlaceholder = apiKey || 'YOUR_API_KEY';
   const keyDisplay = esc(keyPlaceholder);
+  const serverPath = 'node /path/to/coreline-v2/dist/mcp/index.js';
 
-  // Most clients share the same MCP config JSON shape
-  const mcpJson = (serverKey) => `{
-  "${serverKey}": {
-    "coreline": {
-      "command": "node",
-      "args": ["/path/to/coreline-v2/dist/mcp/index.js"],
-      "env": {
-        "CORELINE_API_KEY": "${keyDisplay}"
-      }
-    }
-  }
-}`;
-
-  const sections = {
+  // One copy-paste message per client. The user's AI is smart enough to
+  // handle MCP setup, config files, and restarts on its own.
+  const clients = {
     'claude-desktop': {
       title: 'Claude Desktop',
-      install: `
-        <p>Open <strong>Claude Desktop</strong> -> Settings -> Developer -> Edit Config. Paste this into your <code>mcpServers</code> object (merge with any existing entries):</p>
-        <pre class="connect-ai-code">${mcpJson('mcpServers')}</pre>
-        <p>Save, quit Claude Desktop fully, and reopen it.</p>
-      `,
-      schedule: `
-        <p>Open Settings -> Skills -> Scheduled tasks -> Add task. Paste:</p>
-        <pre class="connect-ai-code">Check my Core Line jobs and update outreach drafts daily at 8am.</pre>
-      `,
-      limitations: ''
+      message: `Hey, I just signed up for Core Line — it's an MCP-powered job search engine. Here's my API key: ${keyDisplay}\n\nPlease set up the Core Line MCP server connection for me. The server command is: ${serverPath}\n\nThe env var it needs is CORELINE_API_KEY set to my key above. Once connected, walk me through onboarding to set up my profile and job search preferences.`,
     },
     'chatgpt': {
-      title: 'ChatGPT Desktop',
-      install: `
-        <p>Enable Developer Mode in <strong>Settings -> Connectors -> Advanced</strong>, then click "Add a new MCP server" and paste this config:</p>
-        <pre class="connect-ai-code">${mcpJson('mcpServers')}</pre>
-        <p>Name it "coreline" and save. Start a new chat to load the tools.</p>
-      `,
-      schedule: `
-        <p>Once connected, say:</p>
-        <pre class="connect-ai-code">Create a task to check my Core Line jobs every day at 8am and update outreach drafts.</pre>
-        <p>ChatGPT will confirm and schedule it.</p>
-      `,
-      limitations: `<strong>Requires ChatGPT Plus or higher.</strong> The Tasks feature is not available on Windows desktop or in web browsers — use macOS desktop, iOS, or Android. ChatGPT Pro tier is currently excluded from Tasks.`
+      title: 'ChatGPT',
+      message: `Hey, I just signed up for Core Line — it's an MCP-powered job search engine. Here's my API key: ${keyDisplay}\n\nPlease connect to the Core Line MCP server. The server command is: ${serverPath}\n\nThe env var it needs is CORELINE_API_KEY set to my key above. Once connected, walk me through onboarding to set up my profile and job search preferences.`,
     },
     'gemini': {
-      title: 'Gemini Advanced',
-      install: `
-        <p>The consumer Gemini apps do not currently host MCP clients natively. To use Core Line with Gemini, install <strong>Gemini CLI</strong> (see the Gemini CLI tab) and pair that.</p>
-        <p>You can still use Gemini Advanced's Scheduled Actions to trigger the CLI sweep below.</p>
-      `,
-      schedule: `
-        <p>In the Gemini app, tap menu -> Scheduled actions -> Create -> paste:</p>
-        <pre class="connect-ai-code">Check my Core Line jobs and update outreach drafts daily at 8am.</pre>
-      `,
-      limitations: `<strong>Scheduled actions require Gemini Advanced or Google Workspace Business+.</strong> The Gemini web, mobile, and native desktop apps do not yet host MCP clients — pair via Gemini CLI instead.`
+      title: 'Gemini',
+      message: `Hey, I just signed up for Core Line — it's an MCP-powered job search engine. Here's my API key: ${keyDisplay}\n\nPlease set up the Core Line MCP server connection. The server command is: ${serverPath}\n\nThe env var it needs is CORELINE_API_KEY set to my key above. Once connected, walk me through onboarding to set up my profile and job search preferences.`,
     },
     'cursor': {
       title: 'Cursor',
-      install: `
-        <p>Open <code>~/.cursor/mcp.json</code> (create it if it doesn't exist) and add:</p>
-        <pre class="connect-ai-code">${mcpJson('mcpServers')}</pre>
-        <p>Restart Cursor or reload the MCP panel.</p>
-      `,
-      schedule: `
-        <p>Start a Background Agent with the prompt:</p>
-        <pre class="connect-ai-code">Check my Core Line jobs daily and update outreach drafts.</pre>
-        <p>Cursor will run it on its servers.</p>
-      `,
-      limitations: `<strong>Background Agents require Cursor Pro or Business tier</strong> and consume agent compute credits.`
+      message: `Hey, I just signed up for Core Line — it's an MCP-powered job search engine. Here's my API key: ${keyDisplay}\n\nPlease add the Core Line MCP server to my Cursor config. The server command is: ${serverPath}\n\nThe env var it needs is CORELINE_API_KEY set to my key above. Once connected, walk me through onboarding to set up my profile and job search preferences.`,
     },
     'windsurf': {
       title: 'Windsurf',
-      install: `
-        <p>Open <strong>Cascade settings -> MCP servers -> Add server</strong>. Paste this JSON:</p>
-        <pre class="connect-ai-code">${mcpJson('mcpServers')}</pre>
-        <p>Save and restart Cascade.</p>
-      `,
-      schedule: `
-        <p>Windsurf doesn't support scheduled tasks. Core Line still works interactively — open Windsurf and say:</p>
-        <pre class="connect-ai-code">Run my Core Line sweep</pre>
-        <p>whenever you want a fresh pass.</p>
-      `,
-      limitations: `<strong>No native scheduling support.</strong> Interactive-only mode. For a proactive layer, pair a second AI client (Claude Code, ChatGPT Plus, or Gemini CLI) that runs on a schedule.`
+      message: `Hey, I just signed up for Core Line — it's an MCP-powered job search engine. Here's my API key: ${keyDisplay}\n\nPlease add the Core Line MCP server to Windsurf. The server command is: ${serverPath}\n\nThe env var it needs is CORELINE_API_KEY set to my key above. Once connected, walk me through onboarding to set up my profile and job search preferences.`,
     },
     'vscode': {
       title: 'VS Code',
-      install: `
-        <p>Open <strong>settings.json</strong> and add the following under <code>github.copilot.mcp</code> (or your Continue/Cline config):</p>
-        <pre class="connect-ai-code">${mcpJson('mcpServers')}</pre>
-        <p>Reload the window to pick up the new server.</p>
-      `,
-      schedule: `
-        <p>VS Code + Copilot doesn't natively support scheduled tasks. Use OS cron or GitHub Actions if you want a scheduled sweep. Otherwise, run interactively:</p>
-        <pre class="connect-ai-code">Run my Core Line sweep</pre>
-      `,
-      limitations: `<strong>No native scheduling support.</strong> Requires GitHub Copilot, Continue, or Cline as the MCP host.`
+      message: `Hey, I just signed up for Core Line — it's an MCP-powered job search engine. Here's my API key: ${keyDisplay}\n\nPlease add the Core Line MCP server to my VS Code MCP config. The server command is: ${serverPath}\n\nThe env var it needs is CORELINE_API_KEY set to my key above. Once connected, walk me through onboarding to set up my profile and job search preferences.`,
     },
     'zed': {
       title: 'Zed',
-      install: `
-        <p>Open Zed settings and add to <code>context_servers</code> (note: different key than other clients):</p>
-        <pre class="connect-ai-code">${mcpJson('context_servers')}</pre>
-        <p>Reload Zed.</p>
-      `,
-      schedule: `
-        <p>Zed doesn't support scheduled tasks yet. Run interactively:</p>
-        <pre class="connect-ai-code">Run my Core Line sweep</pre>
-      `,
-      limitations: `<strong>Zed uses <code>context_servers</code>, not <code>mcpServers</code> — copy carefully.</strong> No native scheduling support.`
+      message: `Hey, I just signed up for Core Line — it's an MCP-powered job search engine. Here's my API key: ${keyDisplay}\n\nPlease add the Core Line MCP server to my Zed config (note: Zed uses context_servers, not mcpServers). The server command is: ${serverPath}\n\nThe env var it needs is CORELINE_API_KEY set to my key above. Once connected, walk me through onboarding to set up my profile and job search preferences.`,
     },
     'claude-code': {
       title: 'Claude Code',
-      install: `
-        <p>Run this in your terminal:</p>
-        <pre class="connect-ai-code">claude mcp add coreline node /path/to/coreline-v2/dist/mcp/index.js -e CORELINE_API_KEY=${keyDisplay}</pre>
-        <p>Restart Claude Code to load the server.</p>
-      `,
-      schedule: `
-        <p>Once connected, run:</p>
-        <pre class="connect-ai-code">/loop 1d "Check my Core Line jobs, run a sweep, and update outreach drafts"</pre>
-        <p>Your machine must be on when the task fires, but Claude Code takes care of the rest.</p>
-      `,
-      limitations: `<strong>Desktop scheduled tasks don't work on Linux</strong> — use <code>claude -p</code> with OS cron instead. Recurring tasks auto-expire after 3 days and need to be recreated.`
+      message: `Hey, I just signed up for Core Line — it's an MCP-powered job search engine. Here's my API key: ${keyDisplay}\n\nPlease run: claude mcp add coreline ${serverPath} -e CORELINE_API_KEY=${keyDisplay}\n\nThen walk me through onboarding to set up my profile and job search preferences.`,
     },
     'gemini-cli': {
       title: 'Gemini CLI',
-      install: `
-        <p>Open <code>~/.gemini/settings.json</code> and add under <code>mcpServers</code>:</p>
-        <pre class="connect-ai-code">${mcpJson('mcpServers')}</pre>
-        <p>Restart any running Gemini CLI sessions.</p>
-      `,
-      schedule: `
-        <p>Add to your crontab:</p>
-        <pre class="connect-ai-code">0 8 * * * gemini -p 'Check my Core Line jobs and update outreach drafts'</pre>
-      `,
-      limitations: ''
+      message: `Hey, I just signed up for Core Line — it's an MCP-powered job search engine. Here's my API key: ${keyDisplay}\n\nPlease add the Core Line MCP server to my Gemini CLI config (~/.gemini/settings.json under mcpServers). The server command is: ${serverPath}\n\nThe env var it needs is CORELINE_API_KEY set to my key above. Once connected, walk me through onboarding to set up my profile and job search preferences.`,
     },
     'other': {
-      title: 'Other MCP clients',
-      install: `
-        <p>Any MCP-compatible client that supports stdio servers can connect. Use your API key:</p>
-        <pre class="connect-ai-code">${keyDisplay}</pre>
-        <p>and launch the server via:</p>
-        <pre class="connect-ai-code">CORELINE_API_KEY=${keyDisplay} node /path/to/coreline-v2/dist/mcp/index.js</pre>
-        <p>Consult your client's docs for where to paste the command.</p>
-      `,
-      schedule: `
-        <p>Your client may have its own scheduling mechanism — check its docs. If not, you can wrap the above command in OS cron.</p>
-      `,
-      limitations: ''
+      title: 'Other AI',
+      message: `Hey, I just signed up for Core Line — it's an MCP-powered job search engine. Here's my API key: ${keyDisplay}\n\nPlease set up the Core Line MCP server. It's a stdio MCP server. The command is: CORELINE_API_KEY=${keyDisplay} ${serverPath}\n\nOnce connected, walk me through onboarding to set up my profile and job search preferences.`,
     },
   };
 
-  const section = sections[clientName] || sections['claude-desktop'];
-  let html = '<div class="connect-ai-body-title">' + esc(section.title) + '</div>';
-  html += '<div class="connect-ai-section connect-ai-install"><div class="connect-ai-section-label">Install</div>' + section.install + '</div>';
-  html += '<div class="connect-ai-section connect-ai-schedule"><div class="connect-ai-section-label">Schedule your sweep</div>' + section.schedule + '</div>';
-  if (section.limitations) {
-    html += '<div class="connect-ai-section"><div class="connect-ai-section-label">Known limitations</div><div class="connect-ai-limitations">' + section.limitations + '</div></div>';
-  }
-  return html;
+  const client = clients[clientName] || clients['claude-desktop'];
+  const msgId = 'cnMsg_' + clientName;
+  return `
+    <div class="connect-ai-body-title">${esc(client.title)}</div>
+    <div class="connect-ai-section">
+      <div class="connect-ai-section-label">Copy this message and paste it into ${esc(client.title)}</div>
+      <div class="connect-ai-msg-box">
+        <pre class="connect-ai-code" id="${msgId}">${esc(client.message)}</pre>
+        <button class="connect-ai-msg-copy" onclick="copyClientMsg('${msgId}')">Copy Message</button>
+      </div>
+    </div>`;
 }
 
 function startPairingPoll(keyId) {
