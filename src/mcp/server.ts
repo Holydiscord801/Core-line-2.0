@@ -778,7 +778,7 @@ const tools: Tool[] = [
       properties: {
         resume_text: {
           type: 'string',
-          description: 'Full plaintext of the user\'s resume. Coreline never sees the original file — the AI extracts and passes the clean text.',
+          description: 'Full plaintext of the user\'s resume. Core Line never sees the original file — the AI extracts and passes the clean text.',
         },
       },
       required: ['resume_text'],
@@ -2335,7 +2335,7 @@ async function runPropagationCycle(
       }>;
 
       // Re-score each job in JS, then issue one UPDATE per job. Bounded
-      // work — Coreline users typically have <200 jobs in the pipeline, so
+      // work — Core Line users typically have <200 jobs in the pipeline, so
       // this is ~200 UPDATE calls on the worst case (few hundred ms via
       // supabase-js). A true bulk-update would need raw SQL; Supabase
       // client doesn't expose a bulk-update-with-per-row-values primitive.

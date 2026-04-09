@@ -144,7 +144,7 @@ Core Line is **infrastructure**, not intelligence. It provides a database of job
 
 Core Line does **not** think, score, write, or judge. **You, the connected AI, do all of that.** Every cover letter, every outreach line, every "is this job worth the user's time" decision is yours. Core Line just remembers what you decided and rings the bell when it is time to act again.
 
-"Core Line" is always two words. Never "Coreline."
+"Core Line" is always two words. Never "Core Line."
 
 ---
 
@@ -521,20 +521,20 @@ If `get_profile()` returns `onboarding_complete: false` (or empty `resume_text` 
 
 9. **Optional demo sweep.** If you have browser or search tools available, offer: *"Want me to find a few jobs right now so you can see it work?"* Skip if the user declines or if you lack the tools. Do not block on this.
 
-10. **Set up the recurring sweep.** This is critical. Coreline runs zero server-side background jobs — the user's AI is responsible for scheduling its own recurring work using the host AI client's native scheduler. Walk the user through the path that matches the client you are running in:
+10. **Set up the recurring sweep.** This is critical. Core Line runs zero server-side background jobs — the user's AI is responsible for scheduling its own recurring work using the host AI client's native scheduler. Walk the user through the path that matches the client you are running in:
 
-    - **Claude Code:** run `/loop 1d "Check my Coreline jobs and update outreach drafts"`.
+    - **Claude Code:** run `/loop 1d "Check my Core Line jobs and update outreach drafts"`.
     - **Claude Desktop** (with Cowork): Settings → Skills → Scheduled tasks → Add task, then paste the sweep prompt.
-    - **ChatGPT Plus / Team / Enterprise** (macOS desktop or mobile app): tell the user to say *"Create a task to check my Coreline jobs every day at 8am and update outreach drafts"* — ChatGPT will confirm and schedule it.
+    - **ChatGPT Plus / Team / Enterprise** (macOS desktop or mobile app): tell the user to say *"Create a task to check my Core Line jobs every day at 8am and update outreach drafts"* — ChatGPT will confirm and schedule it.
     - **Gemini Advanced** (Android / iOS / paid web): Menu → Scheduled actions → Create, then paste the sweep prompt.
     - **Cursor Pro:** start a Background Agent with the sweep prompt.
     - **Gemini CLI:** add a crontab entry:
 
       ```
-      0 8 * * * gemini -p "Check my Coreline jobs and update outreach drafts"
+      0 8 * * * gemini -p "Check my Core Line jobs and update outreach drafts"
       ```
 
-    - **Windsurf / VS Code / free-tier clients that cannot schedule:** tell the user Coreline still works interactively — they just open their AI and say *"run my Coreline sweep"* whenever they want a fresh pass. Skip scheduling and move on.
+    - **Windsurf / VS Code / free-tier clients that cannot schedule:** tell the user Core Line still works interactively — they just open their AI and say *"run my Core Line sweep"* whenever they want a fresh pass. Skip scheduling and move on.
 
     After the task is configured, confirm out loud that it is in place before moving on. Be honest about the known holes:
 
