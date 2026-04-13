@@ -2012,7 +2012,7 @@ async function checkEmailResponses(params: CheckEmailResponsesParams): Promise<o
   // Also get all known contacts with email addresses for SENT scanning
   const { data: allContacts } = await supabase
     .from('v2_contacts')
-    .select('id, name, email, company')
+    .select('id, name, email, company, linkedin_url')
     .eq('user_id', userId)
     .not('email', 'is', null);
 
@@ -2025,11 +2025,130 @@ async function checkEmailResponses(params: CheckEmailResponsesParams): Promise<o
       company: c.company,
     }));
 
+  // === Auto-close hot signals where the recommended action was already taken ===
+  let auto_actioned_signals = 0;
+  const auto_actioned_signal_ids: string[] = [];
+
+  try {
+    // Fetch open hot signals
+    const { data: openSignals } = await supabase
+      .from('v2_hot_signals')
+      .select('*')
+      .eq('user_id', userId)
+      .in('status', ['new', 'user_acknowledged'])
+      .order('created_at', { ascending: false });
+
+    if (openSignals && openSignals.length > 0) {
+      // Fetch ALL recent outreach (including responded-to) for cross-referencing
+      const { data: recentOutreach } = await supabase
+        .from('v2_outreach')
+        .select(`
+          *,
+          v2_contacts (id, name, email, linkedin_url)
+        `)
+        .eq('user_id', userId)
+        .not('sent_at', 'is', null)
+        .gte('sent_at', cutoff.toISOString())
+        .order('sent_at', { ascending: false });
+
+      const sentOutreach = recentOutreach || [];
+
+      // Build lookup sets for fast matching
+      const outreachedContactIds = new Set<string>(
+        sentOutreach.map((o: any) => o.contact_id).filter(Boolean)
+      );
+      const outreachedEmails = new Set<string>(
+        sentOutreach
+          .map((o: any) => o.v2_contacts?.email?.toLowerCase())
+          .filter(Boolean)
+      );
+      const outreachedLinkedInUrls = new Set<string>(
+        sentOutreach
+          .map((o: any) => o.v2_contacts?.linkedin_url?.toLowerCase()?.replace(/\/$/, ''))
+          .filter(Boolean)
+      );
+
+      for (const signal of openSignals) {
+        const payload: any = signal.recommended_action_payload || {};
+        const actionType: string = signal.recommended_action_type || '';
+        let matched = false;
+
+        // Match by related_contact_id — if we sent outreach to the same contact
+        if (signal.related_contact_id && outreachedContactIds.has(signal.related_contact_id)) {
+          matched = true;
+        }
+
+        // Match by email recipient in payload
+        if (!matched && actionType === 'send_email' && payload.to) {
+          if (outreachedEmails.has(payload.to.toLowerCase())) {
+            matched = true;
+          }
+        }
+
+        // Match by LinkedIn recipient URL in payload
+        if (
+          !matched &&
+          (actionType === 'send_linkedin_dm' || actionType === 'send_linkedin_inmail') &&
+          payload.recipient_url
+        ) {
+          const normalizedUrl = payload.recipient_url.toLowerCase().replace(/\/$/, '');
+          if (outreachedLinkedInUrls.has(normalizedUrl)) {
+            matched = true;
+          }
+        }
+
+        // For LinkedIn accept/DM/InMail signal types, also match if we've
+        // outreached the related contact via any channel
+        if (
+          !matched &&
+          signal.related_contact_id &&
+          signal.signal_type.startsWith('linkedin')
+        ) {
+          // Check if there's any outreach to this contact's LinkedIn URL
+          const contact = (allContacts || []).find(
+            (c: any) => c.id === signal.related_contact_id
+          );
+          if (contact?.linkedin_url) {
+            const contactLinkedIn = contact.linkedin_url.toLowerCase().replace(/\/$/, '');
+            // Check for LinkedIn outreach channels specifically
+            const linkedInOutreach = sentOutreach.find(
+              (o: any) =>
+                (o.channel === 'linkedin_dm' ||
+                  o.channel === 'linkedin_inmail' ||
+                  o.channel === 'linkedin_connection_note') &&
+                o.v2_contacts?.linkedin_url?.toLowerCase()?.replace(/\/$/, '') === contactLinkedIn
+            );
+            if (linkedInOutreach) matched = true;
+          }
+        }
+
+        if (matched) {
+          await supabase
+            .from('v2_hot_signals')
+            .update({
+              status: 'actioned',
+              actioned_at: new Date().toISOString(),
+            })
+            .eq('id', signal.id)
+            .eq('user_id', userId);
+          auto_actioned_signals++;
+          auto_actioned_signal_ids.push(signal.id);
+        }
+      }
+    }
+  } catch (signalErr: any) {
+    // Non-fatal — don't fail the whole check_email_responses if signal
+    // auto-close has an issue
+    console.error('Auto-close signals error:', signalErr?.message || signalErr);
+  }
+
   return {
     pending_responses: pending,
     total: pending.length,
     overdue: pending.filter((p: any) => p.is_overdue).length,
     contacts_to_scan,
+    auto_actioned_signals,
+    auto_actioned_signal_ids,
     instructions: `Check Gmail for replies to these ${pending.length} outreach messages. For each:
 1. Search Gmail INBOX for threads with these contacts
 2. Search Gmail SENT folder for emails to contacts_to_scan addresses (detect manual outreach by Micah)
@@ -2042,7 +2161,8 @@ async function checkEmailResponses(params: CheckEmailResponsesParams): Promise<o
    c. The cascade auto-completes: all pending follow-ups for that job are marked 'done', and any hot signals linked to that job are dismissed.
    Do NOT wait for the user to confirm rejections. The cascade is automatic.
 7. If sent email to known contact not yet tracked: call log_outreach() to create the record
-8. If no reply and overdue: the follow-up system will handle it`,
+8. If no reply and overdue: the follow-up system will handle it
+Note: ${auto_actioned_signals} hot signal(s) were auto-actioned because their recommended action was already taken.`,
   };
 }
 
