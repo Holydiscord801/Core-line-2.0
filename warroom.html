@@ -1243,7 +1243,9 @@ body.has-hot-banner .topbar{top:48px}
 
 const SUPABASE_URL = 'https://hazsxuznwftwagpbuhre.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_QA3buJhe0eQpnZwhYM1Kig_SZaFCxha';
-const API_BASE = 'http://localhost:3001/api';
+const API_BASE = window.location.hostname === 'localhost'
+  ? 'http://localhost:3001/api'
+  : '/api';
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
