@@ -2281,7 +2281,11 @@ async function renderWarRoomFollowupAlert() {
 
 function toggleActionItem(itemId) {
   expandedActionItemId = expandedActionItemId === itemId ? null : itemId;
-  renderBattlePlan();
+  try {
+    renderBattlePlan();
+  } catch (err) {
+    console.error('renderBattlePlan failed:', err);
+  }
   // Trigger dossier loading for expanded job items
   if (expandedActionItemId) {
     const match = expandedActionItemId.match(/^bp-job-(.+)$/);
@@ -2293,7 +2297,7 @@ function renderBPItemDetail(item) {
   if (item.type === 'job' && item.jobId) {
     const job = cachedJobs.find(j => j.id === item.jobId);
     if (!job) return '';
-    return renderFullDossier(job, { idPrefix: 'bp', showPipelineNav: true });
+    return `<div id="dossier-bp-${job.id}" class="action-detail">${renderDossierContent(job, { idPrefix: 'bp', showPipelineNav: true })}</div>`;
   }
 
   if (item.type === 'followup') {
@@ -2689,16 +2693,26 @@ function renderBattlePlan() {
     const score = job.match_score || job.fit_score || 0;
     const daysSince = job.updated_at ? Math.round((new Date() - new Date(job.updated_at)) / 86400000) : 0;
     const linkedContacts = getJobContacts(job);
+    const hasDraft = !!job.outreach_draft;
+    const hasContacts = linkedContacts.length > 0;
+    // Demote new jobs with no outreach draft AND no contacts — not actionable yet
+    const actionable = hasDraft || hasContacts;
+    let description;
+    if (actionable) {
+      description = score >= 80 ? 'High match - apply and send outreach' : 'Good match - review and apply';
+    } else {
+      description = `${score}% match - needs research`;
+    }
     actionQueue.push({
-      priority: 2,
-      dotColor: 'var(--cyan)',
+      priority: actionable ? 2 : 4,
+      dotColor: actionable ? 'var(--cyan)' : 'var(--dim)',
       company: job.company,
       role: job.title,
       title: `${esc(job.company)} - ${esc(job.title)}`,
-      description: score >= 80 ? 'High match - apply and send outreach' : 'Good match - review and apply',
+      description: description,
       matchScore: score,
       resumeVariant: job.resume_variant || job.resume_version || null,
-      contactName: linkedContacts.length > 0 ? linkedContacts[0].name : null,
+      contactName: hasContacts ? linkedContacts[0].name : null,
       type: 'job',
       followupId: null,
       jobId: job.id,
@@ -2896,13 +2910,13 @@ function renderBattlePlan() {
 
     return `
       <div>
-        <div class="action-item${isExpanded ? ' action-expanded' : ''}" onclick="toggleActionItem('${itemId}')">
+        <div class="action-item${isExpanded ? ' action-expanded' : ''}" data-item-id="${itemId}" onclick="toggleActionItem('${itemId}')">
           <div class="action-dot" style="background:${item.dotColor}"></div>
           <div class="action-body">
             <div class="action-title">${item.title}${scoreBadge}${resumeTag}${contactTag}${chevron}</div>
             <div class="action-sub">${esc(item.description)}${daysTag}</div>
           </div>
-          <div class="action-buttons" style="position:relative" onclick="event.stopPropagation()">${buttons}</div>
+          <div class="action-buttons" style="position:relative">${buttons}</div>
         </div>
         ${detail}
       </div>`;
@@ -4038,11 +4052,19 @@ function esc(str) {
   return div.innerHTML;
 }
 
+const BLOCKED_APPLY_DOMAINS = ['builtin.com', 'lever.co'];
+
 function renderApplyButtons(job) {
   let html = '';
-  const links = job.apply_links && Array.isArray(job.apply_links) && job.apply_links.length > 0
+  const rawLinks = job.apply_links && Array.isArray(job.apply_links) && job.apply_links.length > 0
     ? job.apply_links
     : (job.url ? [{ label: detectApplyLabel(job.url), url: job.url, source: 'unknown' }] : []);
+  // Filter out blacklisted domains (Built In, Lever)
+  const links = rawLinks.filter(link => {
+    if (!link.url) return true;
+    const u = link.url.toLowerCase();
+    return !BLOCKED_APPLY_DOMAINS.some(d => u.includes(d));
+  });
 
   if (links.length === 0) return '';
 
@@ -4274,6 +4296,19 @@ function timeAgo(dateStr) {
   if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`;
   return formatDate(dateStr);
 }
+
+// ============================================
+// EVENT DELEGATION: Battle plan card clicks
+// ============================================
+// Fallback delegation so card clicks always work even if inline onclick is blocked.
+document.addEventListener('click', function(e) {
+  const actionItem = e.target.closest('.action-item[data-item-id]');
+  if (!actionItem) return;
+  // Don't intercept clicks on interactive elements inside the card
+  if (e.target.closest('a, button, input, select, textarea, .snooze-dropdown')) return;
+  const itemId = actionItem.getAttribute('data-item-id');
+  if (itemId) toggleActionItem(itemId);
+});
 
 // ============================================
 // AUTH STATE LISTENER + INIT
