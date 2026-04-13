@@ -41,7 +41,7 @@ import crypto from 'crypto';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { fetchJobDescription, isBlacklistedJobUrl } from '../utils/jd-scraper.js';
+import { fetchJobDescription, isBlacklistedJobUrl, BLACKLISTED_DOMAINS } from '../utils/jd-scraper.js';
 import { generateCoverLetterText } from '../utils/cover-letter-generator.js';
 
 // ============================================
@@ -1448,6 +1448,11 @@ async function searchJobs(params: SearchJobsParams): Promise<object> {
       fields: ['title', 'company', 'url', 'salary_min', 'salary_max', 'location', 'remote', 'description', 'posted_at'],
     },
     next_step: 'After finding jobs, call bulk_import_jobs() to save them, then score_job() for each.',
+    source_quality_gate: {
+      blocked_domains: BLACKLISTED_DOMAINS,
+      instruction: 'FILTER OUT any job whose URL matches a blocked domain before returning results or calling bulk_import_jobs(). These sources are stale and not accepted by the system.',
+      approved_sources: ['linkedin.com', 'indeed.com', 'myworkdayjobs.com', 'workday.com', 'greenhouse.io', 'boards.greenhouse.io', 'direct company career pages'],
+    },
   };
 }
 
@@ -1570,6 +1575,26 @@ async function scoreJob(params: ScoreJobParams): Promise<ScoreResult> {
     if (data) {
       jobData = { ...params, ...data };
     }
+  }
+
+  // Blocked source gate — return 0 immediately for lever.co, builtin.com, etc.
+  const jobUrl = (jobData as any).url as string | undefined;
+  if (jobUrl && isBlacklistedJobUrl(jobUrl)) {
+    const blocked: ScoreResult = {
+      fit_score: 0,
+      breakdown: {
+        title_match: 0,
+        salary_range: 0,
+        remote_preference: 0,
+        company_stage: 0,
+        industry_fit: 0,
+        reporting_level: 0,
+      },
+      recommendation: `Score blocked: this job is from a disallowed source (${new URL(jobUrl).hostname}). ` +
+        'Only LinkedIn, Indeed, Greenhouse, Workday, and direct company career pages are accepted. ' +
+        'Find the same role on an approved platform and re-add it.',
+    };
+    return blocked;
   }
 
   const result = computeFitScoreFromPrefs(jobData, prefs);
@@ -1987,6 +2012,17 @@ async function fetchJd(jobId: string): Promise<object> {
 
   if (!job) throw new Error('Job not found');
   if (!job.url) throw new Error('Job has no URL to fetch from');
+
+  if (isBlacklistedJobUrl(job.url)) {
+    return {
+      job_id: jobId,
+      success: false,
+      source: 'blocked',
+      error: `Cannot fetch JD: ${new URL(job.url).hostname} is a blocked source. ` +
+        'Only LinkedIn, Indeed, Greenhouse, Workday, and direct company career pages are accepted. ' +
+        'Find this role on an approved platform and re-add it.',
+    };
+  }
 
   const result = await fetchJobDescription(job.url);
 

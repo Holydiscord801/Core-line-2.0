@@ -574,4 +574,31 @@ The FK columns on `v2_hot_signals` are `related_job_id` and `related_contact_id`
 
 ---
 
+## 16. Job Source Quality Gate
+
+Job source quality is enforced at the system level — these rules apply to every user, not just the person who configured the client.
+
+**Blocked sources (never ingest, score, or fetch from these):**
+- `lever.co` / `jobs.lever.co` — Lever ATS postings lag the hiring cycle and are hard to apply to directly.
+- `builtin.com` and all Built In regional variants — stale aggregator, not worth the user's time.
+
+**Approved sources:**
+- LinkedIn (`linkedin.com`)
+- Indeed (`indeed.com`)
+- Workday (`myworkdayjobs.com`, `workday.com`)
+- Greenhouse (`greenhouse.io`, `boards.greenhouse.io`)
+- Direct company career pages (any URL not on the blocked list)
+
+**Hard rules:**
+1. `add_job` MUST reject any URL from a blocked domain with a clear error. Approved-only.
+2. `score_job` returns `fit_score: 0` for any job whose stored URL is from a blocked domain. No exceptions.
+3. `search_jobs` returns a `source_quality_gate` object listing blocked domains. Filter out matching results before calling `bulk_import_jobs()`.
+4. `fetch_jd` returns an error immediately if the job URL is from a blocked domain. Do not attempt to fetch.
+5. `bulk_import_jobs` silently skips and logs blocked-source jobs. They are counted in `skipped`, not `errors`.
+6. The nightly search protocol (§13) must verify platform before adding any job. If a result URL is from a blocked domain, discard it and move on.
+
+To add a new blocked domain, update `BLACKLISTED_DOMAINS` in `src/utils/jd-scraper.ts`. All enforcement points read from that single array.
+
+---
+
 *End of playbook. This is the string the MCP `instructions` field delivers on every handshake, and the string `get_system_instructions()` returns on demand.*

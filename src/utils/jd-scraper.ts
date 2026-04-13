@@ -190,7 +190,7 @@ async function fetchGeneric(url: string, source = 'generic'): Promise<JdScrapeRe
  */
 // Lever and Built In are blacklisted: they lag the hiring cycle and are not
 // allowed sources. Any URL from these domains should never be ingested.
-const BLACKLISTED_DOMAINS = ['lever.co', 'builtin.com', 'builtin.co', 'builtinnyc.com', 'builtinchicago.org', 'builtinseattle.com', 'builtinaustin.com', 'builtinboston.com', 'builtinla.com', 'builtincolorado.com'];
+export const BLACKLISTED_DOMAINS = ['lever.co', 'builtin.com', 'builtin.co', 'builtinnyc.com', 'builtinchicago.org', 'builtinseattle.com', 'builtinaustin.com', 'builtinboston.com', 'builtinla.com', 'builtincolorado.com'];
 
 export function isBlacklistedJobUrl(url: string): boolean {
   if (!url) return false;
