@@ -181,4 +181,35 @@ router.post('/', async (req: Request, res: Response) => {
   }
 });
 
+// PATCH /api/outreach/:id
+router.patch('/:id', async (req: Request, res: Response) => {
+  try {
+    const { outcome, response_received, response_text, response_at } = req.body;
+
+    const updateData: Record<string, any> = {};
+
+    if (outcome !== undefined) updateData.outcome = outcome;
+    if (response_received !== undefined) updateData.response_received = response_received;
+    if (response_text !== undefined) updateData.response_text = response_text;
+    if (response_at !== undefined) updateData.response_at = response_at;
+
+    const { data, error } = await supabase
+      .from('v2_outreach')
+      .update(updateData)
+      .eq('id', req.params.id)
+      .eq('user_id', req.userId!)
+      .select()
+      .single();
+
+    if (error || !data) {
+      res.status(404).json({ error: 'Outreach record not found' });
+      return;
+    }
+
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update outreach' });
+  }
+});
+
 export default router;
