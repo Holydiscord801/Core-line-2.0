@@ -128,7 +128,7 @@ const tools: Tool[] = [
   },
   {
     name: 'get_battle_plan',
-    description: 'Returns the AI-generated daily battle plan for job searching. Includes: jobs discovered that day, contacts identified to reach out to, priority actions ranked by impact, and draft messages. Default is today\'s plan. Use this each morning to see what actions to take.',
+    description: 'Returns the enriched daily battle plan with complete live data. Includes: the battle plan record, live follow-ups due today with personalized copy-paste-ready draft messages, new opportunities with full job details and scores, active pipeline state, and unresolved hot signals. Default is today\'s plan. All follow-up drafts are in live_followups_due[].draft_message — present these to the user verbatim, never summarize.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -225,7 +225,7 @@ const tools: Tool[] = [
   },
   {
     name: 'get_followups_due',
-    description: 'Returns follow-up reminders due in the next N days. Includes: who to contact, which job it relates to, why follow-up is needed, days since last contact, and priority level. Default is 7 days ahead. Use this to stay on top of relationship nurturing.',
+    description: 'Returns follow-up reminders due in the next N days with personalized, copy-paste-ready draft messages. Each follow-up includes: full contact info (name, title, company, LinkedIn, email), full job context (title, company, JD, research memo), complete outreach history (every message sent and received), the follow-up number (1st, 2nd, escalation), and a draft_message field with a ready-to-send personalized message. Present draft_message to the user verbatim — never summarize or paraphrase it. Default is 7 days ahead.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -547,7 +547,7 @@ const tools: Tool[] = [
   },
   {
     name: 'check_email_responses',
-    description: 'Returns all sent outreach messages that have not received a response yet. The AI should:\n1. Check Gmail INBOX for replies to these threads\n2. Check Gmail SENT folder for outreach emails to known contacts (to detect when Micah sends outreach manually)\n3. Check Gmail ARCHIVED/ALL MAIL for missed replies\n\nFor inbox replies from known contacts: call mark_outreach_response() with the outcome.\nFor sent emails to known contacts not yet tracked: call log_outreach() to create the record, then this will auto-generate a follow-up timer.\n\nRun this every 2 hours during work hours.',
+    description: 'Returns all sent outreach messages that have not received a response yet. The AI should:\n1. Check Gmail INBOX for replies to these threads\n2. Check Gmail SENT folder for outreach emails to known contacts (to detect when Micah sends outreach manually)\n3. Check Gmail ARCHIVED/ALL MAIL for missed replies\n\nFor inbox replies from known contacts: call mark_outreach_response() with the outcome.\nFor sent emails to known contacts not yet tracked: call log_outreach() to create the record, then this will auto-generate a follow-up timer.\n\nCRITICAL — Rejection cascade: When a rejection email is detected, do NOT just log it. The full cascade runs automatically: mark_outreach_response(negative) → update_job_status(rejected) → all pending follow-ups for that job marked done → all hot signals for that job dismissed. This is instant and requires no user confirmation.\n\nRun this every 2 hours during work hours.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -982,7 +982,7 @@ async function getProfile(): Promise<V2User> {
   return data as V2User;
 }
 
-async function getBattlePlan(date?: string): Promise<V2BattlePlan | null> {
+async function getBattlePlan(date?: string): Promise<object | null> {
   const userId = requireAuth();
   const targetDate = date || new Date().toISOString().split('T')[0];
 
@@ -997,7 +997,44 @@ async function getBattlePlan(date?: string): Promise<V2BattlePlan | null> {
     throw new Error(`Error fetching battle plan: ${error.message}`);
   }
 
-  return data as V2BattlePlan | null;
+  if (!data) return null;
+
+  // Enrich the battle plan with live followup drafts and complete data
+  const followups = await getFollowupsDue(1);
+
+  // Get today's new jobs with full details
+  const { data: newJobs } = await supabase
+    .from('v2_jobs')
+    .select('id, title, company, url, fit_score, match_score, status, salary_min, salary_max, location, remote, research_memo, cover_letter, created_at')
+    .eq('user_id', userId)
+    .eq('status', 'new')
+    .order('fit_score', { ascending: false })
+    .limit(10);
+
+  // Get active pipeline jobs with pending actions
+  const { data: activeJobs } = await supabase
+    .from('v2_jobs')
+    .select('id, title, company, url, status, fit_score, applied_at, updated_at')
+    .eq('user_id', userId)
+    .in('status', ['applied', 'interviewing', 'researching'])
+    .order('updated_at', { ascending: false });
+
+  // Get hot signals
+  const { data: hotSignals } = await supabase
+    .from('v2_hot_signals')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('status', 'new')
+    .order('created_at', { ascending: false });
+
+  return {
+    ...data,
+    live_followups_due: followups,
+    new_opportunities: newJobs || [],
+    active_pipeline: activeJobs || [],
+    hot_signals: hotSignals || [],
+    enrichment_note: 'This battle plan includes live data: followup drafts with personalized messages ready to copy-paste, full job details for new opportunities, active pipeline state, and unresolved hot signals. All draft messages are in live_followups_due[].draft_message.',
+  };
 }
 
 async function getJobs(status?: JobStatus, limit: number = 20): Promise<V2Job[]> {
@@ -1086,6 +1123,24 @@ async function updateJobStatus(jobId: string, status: JobStatus, notes?: string)
     throw new Error(`Error updating job: ${error?.message || 'Job not found'}`);
   }
 
+  // Rejection cascade: mark all pending follow-ups done, dismiss hot signals
+  if (status === 'rejected') {
+    await supabase
+      .from('v2_followups')
+      .update({ status: 'done' })
+      .eq('user_id', userId)
+      .eq('job_id', jobId)
+      .eq('status', 'pending');
+
+    // Dismiss any hot signals linked to this job
+    await supabase
+      .from('v2_hot_signals')
+      .update({ status: 'dismissed', dismissed_at: new Date().toISOString() })
+      .eq('user_id', userId)
+      .eq('related_job_id', jobId)
+      .in('status', ['new', 'user_acknowledged']);
+  }
+
   return data as V2Job;
 }
 
@@ -1144,8 +1199,8 @@ async function getFollowupsDue(daysAhead: number = 7): Promise<any[]> {
     .from('v2_followups')
     .select(`
       *,
-      v2_jobs (id, title, company),
-      v2_contacts (id, name, title, company)
+      v2_jobs (id, title, company, status, url, research_memo, job_description),
+      v2_contacts (id, name, title, company, linkedin_url, email, relationship_type)
     `)
     .eq('user_id', userId)
     .eq('status', 'pending')
@@ -1156,30 +1211,98 @@ async function getFollowupsDue(daysAhead: number = 7): Promise<any[]> {
     throw new Error(`Error fetching follow-ups: ${error.message}`);
   }
 
-  // Enrich with days since last contact
+  // Load user profile for personalization context
+  const { data: profile } = await supabase
+    .from('v2_users')
+    .select('full_name, current_title, resume_text')
+    .eq('id', userId)
+    .single();
+
+  const userName = profile?.full_name?.split(' ')[0] || 'there';
+
+  // Enrich with outreach history and draft follow-up messages
   const enriched = await Promise.all(
     (data || []).map(async (followup: any) => {
-      if (followup.contact_id) {
-        const { data: lastOutreach } = await supabase
-          .from('v2_outreach')
-          .select('sent_at')
-          .eq('contact_id', followup.contact_id)
-          .order('sent_at', { ascending: false })
-          .limit(1)
-          .single();
+      let days_since_last_contact: number | null = null;
+      let outreach_history: any[] = [];
 
-        if (lastOutreach) {
-          const daysSince = Math.floor(
-            (Date.now() - new Date(lastOutreach.sent_at).getTime()) / (1000 * 60 * 60 * 24)
+      if (followup.contact_id) {
+        // Get full outreach history for this contact+job pair
+        const outreachQuery = supabase
+          .from('v2_outreach')
+          .select('id, channel, message_text, subject_line, sent_at, response_received, response_text, outcome')
+          .eq('contact_id', followup.contact_id)
+          .order('sent_at', { ascending: true });
+
+        if (followup.job_id) {
+          outreachQuery.eq('job_id', followup.job_id);
+        }
+
+        const { data: history } = await outreachQuery;
+        outreach_history = history || [];
+
+        if (outreach_history.length > 0) {
+          const lastSent = outreach_history[outreach_history.length - 1];
+          days_since_last_contact = Math.floor(
+            (Date.now() - new Date(lastSent.sent_at).getTime()) / (1000 * 60 * 60 * 24)
           );
-          return { ...followup, days_since_last_contact: daysSince };
         }
       }
-      return { ...followup, days_since_last_contact: null };
+
+      // Count prior follow-ups to determine escalation stage
+      const followupNumber = outreach_history.filter((o: any) => !o.response_received).length;
+      const contact = followup.v2_contacts;
+      const job = followup.v2_jobs;
+      const contactName = contact?.name?.split(' ')[0] || 'them';
+      const lastMessage = outreach_history.length > 0
+        ? outreach_history[outreach_history.length - 1]
+        : null;
+
+      // Generate personalized draft message
+      let draft_message = '';
+      const channel = lastMessage?.channel || 'email';
+
+      if (followupNumber <= 1) {
+        // First follow-up: light, additive
+        draft_message = channel === 'linkedin'
+          ? `Hi ${contactName}, I wanted to circle back on my message about the ${job?.title || 'role'} at ${job?.company || 'your team'}. ${job?.research_memo ? 'I noticed ' + extractRecentSignal(job.research_memo) + ' — ' : ''}I would love to connect for a quick chat if you have 15 minutes this week. Thanks, ${userName}`
+          : `Hi ${contactName},\n\nI wanted to follow up on my note about the ${job?.title || 'role'} at ${job?.company || 'your company'}. ${job?.research_memo ? 'I saw ' + extractRecentSignal(job.research_memo) + ' and thought it was worth reconnecting. ' : ''}I am still very interested and would welcome a brief conversation if the timing works.\n\nBest,\n${userName}`;
+      } else if (followupNumber === 2) {
+        // Second follow-up: warm, soft pivot
+        draft_message = channel === 'linkedin'
+          ? `Hi ${contactName}, just a gentle nudge on the ${job?.title || 'role'} at ${job?.company || 'your team'}. If this is not the right time or I should reach out to someone else on the team, happy to take a redirect. Either way, appreciate your time. — ${userName}`
+          : `Hi ${contactName},\n\nI know things get busy — just a quick follow-up on the ${job?.title || 'role'}. If you are not the best person to connect with on this, I would appreciate a point in the right direction. No pressure either way.\n\nThanks,\n${userName}`;
+      } else {
+        // Escalation: suggest different contact
+        draft_message = `[ESCALATION] This is follow-up #${followupNumber} with no response. Recommend finding a different contact at ${job?.company || 'the company'} (peer, hiring manager, or related team) via LinkedIn and starting a fresh outreach sequence. Archive this follow-up after the new contact is identified.`;
+      }
+
+      return {
+        ...followup,
+        days_since_last_contact,
+        outreach_history,
+        followup_number: followupNumber,
+        draft_message,
+        draft_channel: channel,
+        draft_subject: lastMessage?.subject_line
+          ? `Re: ${lastMessage.subject_line}`
+          : `Following up — ${job?.title || 'opportunity'} at ${job?.company || 'your company'}`,
+      };
     })
   );
 
   return enriched;
+}
+
+function extractRecentSignal(researchMemo: string): string {
+  // Pull the first meaningful sentence from the research memo for follow-up personalization
+  const sentences = researchMemo.split(/[.!]\s+/).filter((s: string) => s.length > 20 && s.length < 200);
+  if (sentences.length > 0) {
+    const signal = sentences[0].trim();
+    // Lowercase the first char to flow naturally into a sentence
+    return signal.charAt(0).toLowerCase() + signal.slice(1);
+  }
+  return 'some exciting developments at the company';
 }
 
 async function addJob(params: {
@@ -1913,7 +2036,11 @@ async function checkEmailResponses(params: CheckEmailResponsesParams): Promise<o
 3. Search Gmail ALL MAIL/ARCHIVED for missed replies
 4. If reply found: call mark_outreach_response() with the outcome
 5. If positive reply: outcome='positive' or outcome='interview_scheduled'
-6. If rejection: outcome='negative'
+6. If rejection email detected: outcome='negative', then IMMEDIATELY run the rejection cascade:
+   a. call mark_outreach_response(outreach_id, response_text, 'negative')
+   b. call update_job_status(job_id, 'rejected', notes='Rejection email received')
+   c. The cascade auto-completes: all pending follow-ups for that job are marked 'done', and any hot signals linked to that job are dismissed.
+   Do NOT wait for the user to confirm rejections. The cascade is automatic.
 7. If sent email to known contact not yet tracked: call log_outreach() to create the record
 8. If no reply and overdue: the follow-up system will handle it`,
   };

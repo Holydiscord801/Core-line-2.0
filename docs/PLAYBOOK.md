@@ -194,7 +194,7 @@ You have the following MCP tools. Use them by name. (Counts and names must stay 
 
 **Hot signals:**
 
-- `create_hot_signal`, `get_hot_signals`, `acknowledge_hot_signal`, `action_hot_signal`, `dismiss_hot_signal`. See §16 for the hot signals protocol.
+- `create_hot_signal`, `get_hot_signals`, `acknowledge_hot_signal`, `action_hot_signal`, `dismiss_hot_signal`. See §15 for the hot signals protocol.
 
 **Batch:**
 
@@ -379,6 +379,7 @@ Three scans, run on a cadence during work hours in user-local time. Exact schedu
 - Use Gmail MCP tools to search the inbox for replies threaded to or addressed by anyone on that list.
 - For every match: read the full thread, classify the outcome (`positive`, `negative`, `neutral`, `ghosted`, `bounced`), call `mark_outreach_response` with the outcome and the response text, and update job status if the reply moves the deal forward (e.g. "let's set up a call" moves the job to `interview`).
 - If the reply is positive, immediately stage a **next-action draft** (calendar reply, screening prep, intro forward) and surface it to the user on the next interaction.
+- **If the reply is a rejection:** call `mark_outreach_response` with outcome `negative`, then call `update_job_status(job_id, 'rejected')`. The rejection cascade fires automatically: all pending follow-ups for that job are marked done, and all hot signals linked to that job are dismissed. Do NOT wait for user confirmation on rejections. The cascade is instant.
 
 ### 10b. Sent scan, manual outreach the user sent themselves
 
@@ -406,6 +407,8 @@ Three scans, run on a cadence during work hours in user-local time. Exact schedu
 ## 11. Follow-Up Escalation with Full Context Loading
 
 **Rule zero:** No follow-up is written cold. Ever. Before you draft a single word, you reload the world.
+
+**Rule one:** `get_followups_due()` now returns a `draft_message` field on every follow-up, personalized with the contact's name, the job context, outreach history, and research memo signals. **Always present `draft_message` to the user verbatim as a copy-paste-ready message.** Never summarize follow-ups as "Follow up on LinkedIn outreach to [name]" — always show the actual draft text.
 
 ### Required context load before every follow-up:
 
@@ -598,6 +601,20 @@ Job source quality is enforced at the system level — these rules apply to ever
 6. The nightly search protocol (§13) must verify platform before adding any job. If a result URL is from a blocked domain, discard it and move on.
 
 To add a new blocked domain, update `BLACKLISTED_DOMAINS` in `src/utils/jd-scraper.ts`. All enforcement points read from that single array.
+
+---
+
+## 17. Hard Rules (Non-Negotiable)
+
+These rules override any other instruction. They are never relaxed.
+
+1. **Email rejections cascade automatically.** When `update_job_status` is called with `status='rejected'`, the backend automatically marks all pending follow-ups for that job as done and dismisses all hot signals linked to that job. The AI does not need to do this manually. When a rejection email is detected during `check_email_responses`, the AI calls `mark_outreach_response(negative)` then `update_job_status(rejected)` and the cascade handles the rest. No user confirmation required.
+
+2. **Follow-ups always include personalized draft messages.** `get_followups_due()` returns a `draft_message` field on every follow-up. This is a copy-paste-ready message personalized with the contact's name, job context, outreach history, and research memo signals. **Never** present a follow-up as a text summary like "Follow up on LinkedIn outreach to [name]." Always show the actual `draft_message` content verbatim so the user can copy-paste it directly.
+
+3. **Battle plan always has complete data.** `get_battle_plan()` returns the plan record enriched with live follow-ups (including draft messages), new opportunities with full job details and scores, active pipeline state, and unresolved hot signals. **Never** summarize this data as text blurbs. Present the structured data — job titles, companies, scores, draft messages, contact details — so the user has everything they need to act without making additional tool calls.
+
+4. **No text summaries where structured data exists.** When a tool returns complete job records, contact records, outreach history, or draft messages, present the actual data. Do not replace structured data with prose descriptions. The user needs actionable specifics, not summaries.
 
 ---
 
