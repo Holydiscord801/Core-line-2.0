@@ -1005,7 +1005,7 @@ async function getBattlePlan(date?: string): Promise<object | null> {
   // Get today's new jobs with full details
   const { data: newJobs } = await supabase
     .from('v2_jobs')
-    .select('id, title, company, url, fit_score, match_score, status, salary_min, salary_max, location, remote, research_memo, cover_letter, created_at')
+    .select('id, title, company, url, fit_score, match_score, status, salary_min, salary_max, location, remote, cover_letter, created_at')
     .eq('user_id', userId)
     .eq('status', 'new')
     .order('fit_score', { ascending: false })
@@ -1199,7 +1199,7 @@ async function getFollowupsDue(daysAhead: number = 7): Promise<any[]> {
     .from('v2_followups')
     .select(`
       *,
-      v2_jobs (id, title, company, status, url, research_memo, job_description),
+      v2_jobs (id, title, company, status, url, job_description),
       v2_contacts (id, name, title, company, linkedin_url, email, relationship_type)
     `)
     .eq('user_id', userId)
@@ -1265,8 +1265,8 @@ async function getFollowupsDue(daysAhead: number = 7): Promise<any[]> {
       if (followupNumber <= 1) {
         // First follow-up: light, additive
         draft_message = channel === 'linkedin'
-          ? `Hi ${contactName}, I wanted to circle back on my message about the ${job?.title || 'role'} at ${job?.company || 'your team'}. ${job?.research_memo ? 'I noticed ' + extractRecentSignal(job.research_memo) + ' — ' : ''}I would love to connect for a quick chat if you have 15 minutes this week. Thanks, ${userName}`
-          : `Hi ${contactName},\n\nI wanted to follow up on my note about the ${job?.title || 'role'} at ${job?.company || 'your company'}. ${job?.research_memo ? 'I saw ' + extractRecentSignal(job.research_memo) + ' and thought it was worth reconnecting. ' : ''}I am still very interested and would welcome a brief conversation if the timing works.\n\nBest,\n${userName}`;
+          ? `Hi ${contactName}, I wanted to circle back on my message about the ${job?.title || 'role'} at ${job?.company || 'your team'}. I would love to connect for a quick chat if you have 15 minutes this week. Thanks, ${userName}`
+          : `Hi ${contactName},\n\nI wanted to follow up on my note about the ${job?.title || 'role'} at ${job?.company || 'your company'}. I am still very interested and would welcome a brief conversation if the timing works.\n\nBest,\n${userName}`;
       } else if (followupNumber === 2) {
         // Second follow-up: warm, soft pivot
         draft_message = channel === 'linkedin'
@@ -1292,17 +1292,6 @@ async function getFollowupsDue(daysAhead: number = 7): Promise<any[]> {
   );
 
   return enriched;
-}
-
-function extractRecentSignal(researchMemo: string): string {
-  // Pull the first meaningful sentence from the research memo for follow-up personalization
-  const sentences = researchMemo.split(/[.!]\s+/).filter((s: string) => s.length > 20 && s.length < 200);
-  if (sentences.length > 0) {
-    const signal = sentences[0].trim();
-    // Lowercase the first char to flow naturally into a sentence
-    return signal.charAt(0).toLowerCase() + signal.slice(1);
-  }
-  return 'some exciting developments at the company';
 }
 
 async function addJob(params: {

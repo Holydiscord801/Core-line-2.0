@@ -1593,7 +1593,8 @@ function getJobContacts(job) {
 }
 
 function updateSideBadges() {
-  const activeCount = cachedJobs.filter(j => j.status !== 'closed' && j.status !== 'rejected').length;
+  const badgeActiveStatuses = new Set(['new', 'researching', 'applied', 'interviewing', 'offer']);
+  const activeCount = cachedJobs.filter(j => badgeActiveStatuses.has(j.status)).length;
   setBadge('badgePipeline', activeCount);
   setBadge('badgeNetwork', cachedContacts.length);
   if (cachedSummary) {
@@ -1646,7 +1647,8 @@ function renderWarRoom() {
 }
 
 function renderStats() {
-  const activeCount = cachedJobs.filter(j => j.status !== 'closed' && j.status !== 'rejected').length;
+  const statsActiveStatuses = new Set(['new', 'researching', 'applied', 'interviewing', 'offer']);
+  const activeCount = cachedJobs.filter(j => statsActiveStatuses.has(j.status)).length;
   const pipelineCount = cachedJobs.filter(j => j.status === 'applied' || j.status === 'interviewing').length;
   const warmCount = cachedContacts.filter(c => (c.warmth_score || 0) > 0).length;
   const responseRate = cachedSummary?.response_rate || 0;
@@ -1697,8 +1699,9 @@ function formatSalary(job) {
 
 function renderBattleGrid() {
   const grid = document.getElementById('battleGrid');
+  const gridActiveStatuses = new Set(['new', 'researching', 'applied', 'interviewing', 'offer']);
   const activeJobs = cachedJobs
-    .filter(j => j.status !== 'closed' && j.status !== 'rejected')
+    .filter(j => gridActiveStatuses.has(j.status))
     .sort((a, b) => {
       // Sort by status progress first, then by match score
       const statusDiff = getStatusProgress(b.status) - getStatusProgress(a.status);
@@ -2556,9 +2559,15 @@ function renderBattlePlan() {
   const statsEl = document.getElementById('battleplanStats');
 
   const today = new Date().toISOString().split('T')[0];
-  const activeJobs = cachedJobs.filter(j => j.status !== 'closed' && j.status !== 'rejected');
-  const overdueFollowups = cachedFollowupsBP.filter(f => f.due_date < today);
-  const dueTodayFollowups = cachedFollowupsBP.filter(f => f.due_date === today);
+  const activeStatuses = new Set(['new', 'researching', 'applied', 'interviewing', 'offer']);
+  const activeJobs = cachedJobs.filter(j => activeStatuses.has(j.status));
+  // Exclude followups for closed/rejected jobs
+  const activeFollowups = cachedFollowupsBP.filter(f => {
+    const jobStatus = f.v2_jobs?.status;
+    return !jobStatus || activeStatuses.has(jobStatus);
+  });
+  const overdueFollowups = activeFollowups.filter(f => f.due_date < today);
+  const dueTodayFollowups = activeFollowups.filter(f => f.due_date === today);
   const outreachPending = activeJobs.filter(j => j.status === 'new' || j.status === 'researching').length;
 
   // Stats row
