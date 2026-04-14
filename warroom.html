@@ -2280,17 +2280,52 @@ async function renderWarRoomFollowupAlert() {
 // ============================================
 
 function toggleActionItem(itemId) {
-  alert('toggleActionItem fired: ' + JSON.stringify(Array.from(arguments)));
-  expandedActionItemId = expandedActionItemId === itemId ? null : itemId;
   try {
-    renderBattlePlan();
+    const isCollapsing = expandedActionItemId === itemId;
+    // Collapse any previously expanded item
+    if (expandedActionItemId) {
+      const prevWrapper = document.querySelector(`[data-item-id="${expandedActionItemId}"]`);
+      if (prevWrapper) {
+        prevWrapper.classList.remove('action-expanded');
+        // Update chevron
+        const chev = prevWrapper.querySelector('.action-title span:last-child');
+        if (chev) { chev.style.transform = ''; chev.innerHTML = '&#9656;'; }
+      }
+      const prevDetail = document.getElementById('bp-detail-' + expandedActionItemId);
+      if (prevDetail) prevDetail.remove();
+    }
+
+    expandedActionItemId = isCollapsing ? null : itemId;
+
+    if (!isCollapsing) {
+      const wrapper = document.querySelector(`[data-item-id="${itemId}"]`);
+      if (!wrapper) return;
+      wrapper.classList.add('action-expanded');
+      // Update chevron
+      const chev = wrapper.querySelector('.action-title span:last-child');
+      if (chev) { chev.style.transform = 'rotate(90deg)'; chev.innerHTML = '&#9662;'; }
+
+      // Find the cached action queue item and render its detail
+      const item = (window._bpActionQueue || []).find(a => a._itemId === itemId);
+      if (item) {
+        const detailHTML = renderBPItemDetail(item);
+        if (detailHTML) {
+          const detailDiv = document.createElement('div');
+          detailDiv.id = 'bp-detail-' + itemId;
+          detailDiv.innerHTML = detailHTML;
+          wrapper.parentElement.appendChild(detailDiv);
+        }
+      }
+
+      // Trigger dossier loading for expanded job items
+      const match = itemId.match(/^bp-job-(.+)$/);
+      if (match) setTimeout(() => loadDossierForCard(match[1]), 0);
+    }
   } catch (err) {
-    console.error('renderBattlePlan failed:', err);
-  }
-  // Trigger dossier loading for expanded job items
-  if (expandedActionItemId) {
-    const match = expandedActionItemId.match(/^bp-job-(.+)$/);
-    if (match) setTimeout(() => loadDossierForCard(match[1]), 0);
+    document.body.insertAdjacentHTML('afterbegin',
+      '<div style="background:red;color:white;padding:20px;position:fixed;top:0;left:0;right:0;z-index:99999;font-size:18px">' +
+      'ERROR in toggleActionItem: ' + err.message + '<br><pre>' + err.stack + '</pre></div>');
+    console.error('toggleActionItem FATAL:', err);
   }
 }
 
@@ -2558,6 +2593,8 @@ function showDraftModal(draft) {
 
 function renderBattlePlan() {
   try {
+  // Full re-render wipes DOM — clear expansion state
+  expandedActionItemId = null;
   const briefingEl = document.getElementById('battleplanBriefing');
   const queueEl = document.getElementById('actionQueue');
   const metaEl = document.getElementById('battleplan-meta');
@@ -2843,10 +2880,16 @@ function renderBattlePlan() {
     return;
   }
 
-  queueEl.innerHTML = actionQueue.map((item, idx) => {
-    const itemId = item.jobId ? `bp-${item.type}-${item.jobId}`
+  // Cache action queue for in-place toggle lookups
+  actionQueue.forEach((item, idx) => {
+    item._itemId = item.jobId ? `bp-${item.type}-${item.jobId}`
                  : item.followupId ? `bp-${item.type}-${item.followupId}`
                  : `bp-${item.type}-${idx}`;
+  });
+  window._bpActionQueue = actionQueue;
+
+  queueEl.innerHTML = actionQueue.map((item, idx) => {
+    const itemId = item._itemId;
     const isExpanded = expandedActionItemId === itemId;
 
     // Match score badge
@@ -2908,11 +2951,9 @@ function renderBattlePlan() {
       buttons += `<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();window.open('https://mail.google.com','_blank')">Gmail</button>`;
     }
 
-    const detail = isExpanded ? renderBPItemDetail(item) : '';
-
     return `
       <div>
-        <div class="action-item${isExpanded ? ' action-expanded' : ''}" data-item-id="${itemId}" onclick="toggleActionItem('${itemId}')">
+        <div class="action-item" data-item-id="${itemId}" onclick="toggleActionItem('${itemId}')">
           <div class="action-dot" style="background:${item.dotColor}"></div>
           <div class="action-body">
             <div class="action-title">${item.title}${scoreBadge}${resumeTag}${contactTag}${chevron}</div>
@@ -2920,7 +2961,6 @@ function renderBattlePlan() {
           </div>
           <div class="action-buttons" style="position:relative">${buttons}</div>
         </div>
-        ${detail}
       </div>`;
   }).join('');
   } catch (e) {
