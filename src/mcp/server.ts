@@ -38,6 +38,7 @@ import type {
   SetJobTracksParams,
 } from '../types/index.js';
 import crypto from 'crypto';
+import { addBusinessDays, TIMER_DEFAULTS } from '../utils/timers.js';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -1095,58 +1096,122 @@ async function getContacts(jobId?: string): Promise<V2Contact[]> {
   return data as V2Contact[];
 }
 
-
-// Helper: calculate date N business days from now
-function addBusinessDays(startDate: Date, days: number): Date {
-  const result = new Date(startDate);
-  let added = 0;
-  while (added < days) {
-    result.setDate(result.getDate() + 1);
-    const dow = result.getDay();
-    if (dow !== 0 && dow !== 6) added++;
-  }
-  return result;
-}
-
-// Helper: parse timing hints from notes into a due date
+/**
+ * Parse natural-language timing phrases from notes into a concrete due date.
+ * Returns null if no timing phrase is detected.
+ */
 function parseDueDateFromNotes(notes: string): Date | null {
-  const today = new Date();
   const lower = notes.toLowerCase();
-  
-  // "decision expected Monday" or "decision expected April 6"
-  const dateMatch = lower.match(/(?:by|expected|targeting|scheduled for|around)\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2})/i);
-  
-  if (lower.includes('mid-to-late next week') || lower.includes('mid to late next week')) {
-    // Thursday of next week
+  const today = new Date();
+  const currentDay = today.getDay(); // 0=Sun, 1=Mon, ...
+
+  // "by Monday", "by Tuesday", etc.
+  const byDayMatch = lower.match(/by\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/);
+  if (byDayMatch) {
+    const dayNames: Record<string, number> = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
+    const targetDay = dayNames[byDayMatch[1]];
+    const daysUntil = (targetDay - currentDay + 7) % 7 || 7;
     const result = new Date(today);
-    const daysUntilThursday = ((4 - today.getDay()) + 7) % 7 || 7;
-    result.setDate(result.getDate() + daysUntilThursday);
-    if (result <= today) result.setDate(result.getDate() + 7);
+    result.setDate(result.getDate() + daysUntil);
     return result;
   }
-  if (lower.includes('mid-next week') || lower.includes('middle of next week')) {
-    return addBusinessDays(today, 5);
+
+  // "next Monday", "next Tuesday", etc.
+  const nextDayMatch = lower.match(/next\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/);
+  if (nextDayMatch) {
+    const dayNames: Record<string, number> = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
+    const targetDay = dayNames[nextDayMatch[1]];
+    const daysUntil = (targetDay - currentDay + 7) % 7 || 7;
+    const result = new Date(today);
+    result.setDate(result.getDate() + daysUntil);
+    return result;
   }
-  if (lower.includes('late next week') || lower.includes('end of next week')) {
-    return addBusinessDays(today, 7);
+
+  // "mid-to-late next week", "mid next week", "late next week"
+  if (/mid.to.late\s+next\s+week/.test(lower)) {
+    // Wednesday-Thursday of next week
+    const daysToNextWed = (3 - currentDay + 7) % 7 + 7;
+    const result = new Date(today);
+    result.setDate(result.getDate() + daysToNextWed);
+    return result;
   }
-  if (lower.includes('early next week') || lower.includes('beginning of next week')) {
-    return addBusinessDays(today, 3);
+  if (/late\s+next\s+week/.test(lower)) {
+    // Thursday of next week
+    const daysToNextThu = (4 - currentDay + 7) % 7 + 7;
+    const result = new Date(today);
+    result.setDate(result.getDate() + daysToNextThu);
+    return result;
   }
-  if (lower.includes('next week')) {
-    return addBusinessDays(today, 5);
+  if (/mid\s+next\s+week/.test(lower)) {
+    // Wednesday of next week
+    const daysToNextWed = (3 - currentDay + 7) % 7 + 7;
+    const result = new Date(today);
+    result.setDate(result.getDate() + daysToNextWed);
+    return result;
   }
-  if (lower.includes('this week')) {
-    return addBusinessDays(today, 2);
+
+  // "next week" (generic — default to Wednesday)
+  if (/next\s+week/.test(lower) && !nextDayMatch) {
+    const daysToNextWed = (3 - currentDay + 7) % 7 + 7;
+    const result = new Date(today);
+    result.setDate(result.getDate() + daysToNextWed);
+    return result;
   }
-  if (lower.includes('couple of days') || lower.includes('few days')) {
-    return addBusinessDays(today, 3);
+
+  // "decision expected April 6", "expected Monday April 6", etc.
+  const dateMatch = lower.match(/(?:expected|by|around|before)\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday\s+)?(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})/);
+  if (dateMatch) {
+    const monthNames = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+    const monthMatch = lower.match(/(january|february|march|april|may|june|july|august|september|october|november|december)/);
+    if (monthMatch) {
+      const month = monthNames.indexOf(monthMatch[1]);
+      const day = parseInt(dateMatch[1], 10);
+      const year = today.getFullYear();
+      const result = new Date(year, month, day);
+      // If the date is in the past, it's already overdue — return today
+      if (result < today) return today;
+      return result;
+    }
   }
-  if (lower.includes('end of week')) {
-    return addBusinessDays(today, 3);
+
+  // "end of week" — Friday of current week
+  if (/end\s+of\s+(?:this\s+)?week/.test(lower)) {
+    const daysToFri = (5 - currentDay + 7) % 7 || 7;
+    const result = new Date(today);
+    result.setDate(result.getDate() + daysToFri);
+    return result;
   }
-  
+
+  // "tomorrow"
+  if (/\btomorrow\b/.test(lower)) {
+    const result = new Date(today);
+    result.setDate(result.getDate() + 1);
+    return result;
+  }
+
   return null;
+}
+
+/**
+ * Find the primary contact (hiring_manager preferred) for a job.
+ */
+async function findPrimaryContactForJob(jobId: string): Promise<string | null> {
+  // First try to find a hiring_manager
+  const { data: hmContacts } = await supabase
+    .from('v2_job_contacts')
+    .select('contact_id, v2_contacts!inner(id, relationship_type)')
+    .eq('job_id', jobId);
+
+  if (!hmContacts || hmContacts.length === 0) return null;
+
+  // Prefer hiring_manager, then recruiter, then any contact
+  const hm = hmContacts.find((jc: any) => jc.v2_contacts?.relationship_type === 'hiring_manager');
+  if (hm) return hm.contact_id;
+
+  const recruiter = hmContacts.find((jc: any) => jc.v2_contacts?.relationship_type === 'recruiter');
+  if (recruiter) return recruiter.contact_id;
+
+  return hmContacts[0].contact_id;
 }
 
 async function updateJobStatus(jobId: string, status: JobStatus, notes?: string): Promise<V2Job> {
@@ -1177,62 +1242,26 @@ async function updateJobStatus(jobId: string, status: JobStatus, notes?: string)
     throw new Error(`Error updating job: ${error?.message || 'Job not found'}`);
   }
 
-  // Terminal status cascade: mark all pending follow-ups done, dismiss hot signals
-  if (status === 'rejected' || status === 'closed' || status === 'offer') {
-    await supabase
-      .from('v2_followups')
-      .update({ status: 'done' })
-      .eq('user_id', userId)
-      .eq('job_id', jobId)
-      .eq('status', 'pending');
-
-    // Dismiss any hot signals linked to this job
-    if (status === 'rejected' || status === 'closed') {
-      await supabase
-        .from('v2_hot_signals')
-        .update({ status: 'dismissed', dismissed_at: new Date().toISOString() })
-        .eq('user_id', userId)
-        .eq('related_job_id', jobId)
-        .in('status', ['new', 'user_acknowledged']);
-    }
-  }
-
-  // Auto-create follow-up reminders for active statuses
+  // Auto-create follow-ups for interview and applied statuses
   if (status === 'interviewing' || status === 'applied') {
-    // First dismiss any existing pending follow-ups for this job to avoid duplicates
-    await supabase
-      .from('v2_followups')
-      .update({ status: 'done' })
-      .eq('user_id', userId)
-      .eq('job_id', jobId)
-      .eq('status', 'pending');
+    const timerType: TimerType = status === 'interviewing' ? 'interview_followup' : 'application_followup';
+    const defaultWindow = TIMER_DEFAULTS[timerType];
 
-    // Find the hiring manager contact for this job
-    const { data: jobContacts } = await supabase
-      .from('v2_contacts')
-      .select('id')
-      .eq('user_id', userId)
-      .eq('company', data.company)
-      .eq('relationship_type', 'hiring_manager')
-      .limit(1);
-
-    const contactId = jobContacts?.[0]?.id || null;
-
-    // Calculate due date
+    // Parse notes for timing overrides
     let dueDate: Date;
-    const defaultDays = status === 'interviewing' ? 3 : 5;
-    
     if (notes) {
-      const parsedDate = parseDueDateFromNotes(notes);
-      dueDate = parsedDate || addBusinessDays(new Date(), defaultDays);
+      const parsed = parseDueDateFromNotes(notes);
+      dueDate = parsed || addBusinessDays(new Date(), defaultWindow);
     } else {
-      dueDate = addBusinessDays(new Date(), defaultDays);
+      dueDate = addBusinessDays(new Date(), defaultWindow);
     }
 
-    const timerType = status === 'interviewing' ? 'interview_followup' : 'application_followup';
+    const contactId = await findPrimaryContactForJob(jobId);
+
     const reason = status === 'interviewing'
       ? 'Follow up on interview — check if next steps have been communicated'
       : 'Follow up on application — no response yet';
+
     const priority = status === 'interviewing' ? 'high' : 'medium';
 
     await supabase
@@ -1246,8 +1275,26 @@ async function updateJobStatus(jobId: string, status: JobStatus, notes?: string)
         priority,
         status: 'pending',
         timer_type: timerType,
-        business_days_window: defaultDays,
+        business_days_window: defaultWindow,
       });
+  }
+
+  // Terminal statuses: resolve all pending follow-ups and dismiss hot signals
+  if (status === 'rejected' || status === 'offer' || status === 'closed') {
+    await supabase
+      .from('v2_followups')
+      .update({ status: 'done' })
+      .eq('user_id', userId)
+      .eq('job_id', jobId)
+      .eq('status', 'pending');
+
+    // Dismiss any hot signals linked to this job
+    await supabase
+      .from('v2_hot_signals')
+      .update({ status: 'dismissed', dismissed_at: new Date().toISOString() })
+      .eq('user_id', userId)
+      .eq('related_job_id', jobId)
+      .in('status', ['new', 'user_acknowledged']);
   }
 
   return data as V2Job;
@@ -1370,12 +1417,22 @@ async function getFollowupsDue(daysAhead: number = 7): Promise<any[]> {
       // Generate personalized draft message
       let draft_message = '';
       const channel = lastMessage?.channel || 'email';
+      const timerType = followup.timer_type;
 
-      // Interview follow-ups get their own draft style
-      if (followup.timer_type === 'interview_followup') {
-        draft_message = `Hi ${contactName},\n\nI really enjoyed our conversation about the ${job?.title || 'role'} at ${job?.company || 'your company'}. Wanted to check in on timing for next steps. Still very much interested and happy to provide any additional information that would be helpful.\n\nBest,\n${userName}`;
-      } else if (followup.timer_type === 'application_followup' && followupNumber === 0) {
-        draft_message = `Hi ${contactName},\n\nI recently applied for the ${job?.title || 'role'} at ${job?.company || 'your company'} and wanted to introduce myself directly. I believe my background is a strong fit and would welcome a brief conversation about the role.\n\nBest,\n${userName}`;
+      if (timerType === 'interview_followup') {
+        // Interview follow-up: reference the interview process, not cold outreach
+        draft_message = contact
+          ? (channel === 'linkedin'
+            ? `Hi ${contactName}, I wanted to check in on next steps for the ${job?.title || 'role'} at ${job?.company || 'your team'}. I really enjoyed our conversation and am excited about the opportunity. Please let me know if there is anything else you need from my end. Thanks, ${userName}`
+            : `Hi ${contactName},\n\nI wanted to follow up on our conversation about the ${job?.title || 'role'} at ${job?.company || 'your company'}. I am very excited about the opportunity and would love to hear about next steps whenever you have an update.\n\nPlease let me know if there is anything else I can provide.\n\nBest,\n${userName}`)
+          : `[ACTION] Follow up on interview for ${job?.title || 'role'} at ${job?.company || 'company'} — check if next steps or scheduling updates have been communicated.`;
+      } else if (timerType === 'application_followup') {
+        // Application follow-up: check on application status
+        draft_message = contact
+          ? (channel === 'linkedin'
+            ? `Hi ${contactName}, I recently applied for the ${job?.title || 'role'} at ${job?.company || 'your team'} and wanted to express my continued interest. I would love to connect for a brief chat about the role if you have a few minutes. Thanks, ${userName}`
+            : `Hi ${contactName},\n\nI recently applied for the ${job?.title || 'role'} at ${job?.company || 'your company'} and wanted to follow up to express my continued interest. I believe my background is a strong fit and would welcome the chance to discuss the role further.\n\nBest,\n${userName}`)
+          : `[ACTION] Follow up on application for ${job?.title || 'role'} at ${job?.company || 'company'} — no response received yet.`;
       } else if (followupNumber <= 1) {
         // First follow-up: light, additive
         draft_message = channel === 'linkedin'

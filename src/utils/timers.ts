@@ -9,9 +9,11 @@
  *   linkedin_connection: 3 business days
  *   interview_thankyou: 2 business days
  *   general_followup: 3 business days
+ *   interview_followup: 3 business days
+ *   application_followup: 5 business days
  */
 
-export type TimerType = 'application' | 'outreach_email' | 'outreach_linkedin' | 'linkedin_connection' | 'interview_thankyou' | 'general_followup';
+export type TimerType = 'application' | 'outreach_email' | 'outreach_linkedin' | 'linkedin_connection' | 'interview_thankyou' | 'general_followup' | 'interview_followup' | 'application_followup';
 
 export const TIMER_DEFAULTS: Record<TimerType, number> = {
   application: 5,
@@ -20,6 +22,8 @@ export const TIMER_DEFAULTS: Record<TimerType, number> = {
   linkedin_connection: 3,
   interview_thankyou: 2,
   general_followup: 3,
+  interview_followup: 3,
+  application_followup: 5,
 };
 
 // Escalation path thresholds (in business days)

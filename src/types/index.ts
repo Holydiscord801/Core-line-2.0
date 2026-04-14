@@ -58,7 +58,7 @@ export interface V2User {
 export type JobStatus = 'new' | 'researching' | 'applied' | 'interviewing' | 'offer' | 'closed' | 'rejected';
 export type JobSource = 'linkedin' | 'indeed' | 'google' | 'glassdoor' | 'manual' | 'other';
 export type PostingStatus = 'live' | 'dead' | 'expired' | 'unknown';
-export type TimerType = 'application' | 'outreach_email' | 'outreach_linkedin' | 'linkedin_connection' | 'interview_thankyou' | 'general_followup';
+export type TimerType = 'application' | 'outreach_email' | 'outreach_linkedin' | 'linkedin_connection' | 'interview_thankyou' | 'general_followup' | 'interview_followup' | 'application_followup';
 
 export interface V2Job {
   id: string;
