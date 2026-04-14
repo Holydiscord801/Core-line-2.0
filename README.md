@@ -1,14 +1,32 @@
 # Coreline v2
 
-AI-native backend for job search. The AI is the primary user; humans watch the dashboard.
+**Display + data + MCP server. That's it.**
 
-Coreline tracks relationships and jobs. An overnight AI agent scans opportunities, scores them against your resume, identifies key relationships, and delivers a morning battle plan with draft messages. Follow-up nudges keep your pipeline moving.
+Coreline is the war room. Your AI is the operator.
+
+You bring your own AI (Claude, ChatGPT, Gemini, OpenClaw -- anything). It connects to the Coreline MCP server, reads the playbook, and runs your job search for you. It checks your email, creates Gmail drafts, researches contacts, scores jobs, and updates the battle plan. Coreline never touches your credentials and never pays for AI compute.
+
+The playbook -- delivered to your AI on every connection -- is the intelligence. Coreline is the infrastructure.
 
 ## Architecture
 
-- **MCP Server** (stdio) -- any AI (Claude Desktop, OpenClaw, etc.) connects and operates your job pipeline
-- **REST API** (Express) -- for dashboards, mobile apps, or direct integration
-- **Supabase** -- Postgres database with RLS, auth, and real-time
+- **MCP Server** -- your AI connects here. Reads the playbook on handshake, calls tools to update pipeline, log outreach, create hot signals, manage battle plan
+- **REST API** (Express) -- powers the warroom UI and any direct integrations
+- **Supabase** -- Postgres with RLS, auth, real-time
+- **Warroom UI** -- beautiful display of everything your AI is doing
+
+### What Coreline builds
+- MCP tools (clean, well-documented, stable)
+- Warroom UI (display layer)
+- The playbook (the IP that makes AIs effective)
+- Onboarding docs (how to connect your AI, how to set up crons, what to expect)
+
+### What Coreline never builds
+- Gmail/email integration (your AI handles this with its own access)
+- LinkedIn scraping (your AI handles this)
+- AI inference or model hosting
+- OAuth for third-party services
+- Cron job infrastructure (your AI or your OpenClaw instance runs the crons)
 
 ## Setup
 
