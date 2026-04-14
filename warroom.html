@@ -2282,40 +2282,36 @@ async function renderWarRoomFollowupAlert() {
 function toggleActionItem(itemId) {
   try {
     const isCollapsing = expandedActionItemId === itemId;
+
     // Collapse any previously expanded item
     if (expandedActionItemId) {
       const prevWrapper = document.querySelector(`[data-item-id="${expandedActionItemId}"]`);
       if (prevWrapper) {
         prevWrapper.classList.remove('action-expanded');
-        // Update chevron
         const chev = prevWrapper.querySelector('.action-title span:last-child');
         if (chev) { chev.style.transform = ''; chev.innerHTML = '&#9656;'; }
+        // Remove adjacent detail panel
+        const nextEl = prevWrapper.nextElementSibling;
+        if (nextEl && nextEl.classList.contains('action-detail')) nextEl.remove();
       }
-      const prevDetail = document.getElementById('bp-detail-' + expandedActionItemId);
-      if (prevDetail) prevDetail.remove();
     }
 
     expandedActionItemId = isCollapsing ? null : itemId;
 
     if (!isCollapsing) {
       const wrapper = document.querySelector(`[data-item-id="${itemId}"]`);
-      if (!wrapper) return;
+      if (!wrapper) { console.error('[BP] wrapper not found for', itemId); return; }
       wrapper.classList.add('action-expanded');
-      // Update chevron
       const chev = wrapper.querySelector('.action-title span:last-child');
       if (chev) { chev.style.transform = 'rotate(90deg)'; chev.innerHTML = '&#9662;'; }
 
       // Find the cached action queue item and render its detail
       const item = (window._bpActionQueue || []).find(a => a._itemId === itemId);
-      if (item) {
-        const detailHTML = renderBPItemDetail(item);
-        if (detailHTML) {
-          const detailDiv = document.createElement('div');
-          detailDiv.id = 'bp-detail-' + itemId;
-          detailDiv.innerHTML = detailHTML;
-          wrapper.parentElement.appendChild(detailDiv);
-        }
+      let detailHTML = item ? renderBPItemDetail(item) : '';
+      if (!detailHTML) {
+        detailHTML = '<div class="action-detail" style="padding:12px 20px;font-size:12px;color:var(--dim)">No additional detail for this item.</div>';
       }
+      wrapper.insertAdjacentHTML('afterend', detailHTML);
 
       // Trigger dossier loading for expanded job items
       const match = itemId.match(/^bp-job-(.+)$/);
@@ -2953,7 +2949,7 @@ function renderBattlePlan() {
 
     return `
       <div>
-        <div class="action-item" data-item-id="${itemId}" onclick="toggleActionItem('${itemId}')">
+        <div class="action-item" data-item-id="${itemId}">
           <div class="action-dot" style="background:${item.dotColor}"></div>
           <div class="action-body">
             <div class="action-title">${item.title}${scoreBadge}${resumeTag}${contactTag}${chevron}</div>
