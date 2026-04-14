@@ -2313,9 +2313,8 @@ function toggleActionItem(itemId) {
       }
       wrapper.insertAdjacentHTML('afterend', detailHTML);
 
-      // Trigger dossier loading for expanded job items
-      const match = itemId.match(/^bp-job-(.+)$/);
-      if (match) setTimeout(() => loadDossierForCard(match[1]), 0);
+      // Trigger dossier loading for expanded job and followup items
+      if (item && item.jobId) setTimeout(() => loadDossierForCard(item.jobId), 0);
     }
   } catch (err) {
     document.body.insertAdjacentHTML('afterbegin',
@@ -2326,44 +2325,318 @@ function toggleActionItem(itemId) {
 }
 
 function renderBPItemDetail(item) {
+  // ── JOB ITEMS (new opportunities, stale/applied, monitoring) ──
   if (item.type === 'job' && item.jobId) {
     const job = cachedJobs.find(j => j.id === item.jobId);
     if (!job) return '';
-    return `<div id="dossier-bp-${job.id}" class="action-detail">${renderDossierContent(job, { idPrefix: 'bp', showPipelineNav: true })}</div>`;
+
+    const score = job.match_score || job.fit_score || 0;
+    const scoreColor = score >= 80 ? 'var(--green)' : score >= 60 ? 'var(--yellow)' : 'var(--dim)';
+    const salary = formatSalary(job);
+    const linkedContacts = getJobContacts(job);
+    const primaryContact = linkedContacts.length > 0 ? linkedContacts[0] : null;
+    const isStale = item.daysInactive >= 5 && (job.status === 'applied' || job.status === 'interviewing');
+    const isOverdue = item.priority === 0;
+    const signals = (cachedHotSignals || []).filter(s => s.related_job_id === job.id && (s.status === 'new' || s.status === 'user_acknowledged'));
+
+    let html = `<div id="dossier-bp-${job.id}" class="action-detail">`;
+
+    // ── DO THIS NEXT banner ──
+    html += `<div style="background:linear-gradient(135deg,rgba(99,102,241,.14),rgba(139,92,246,.08));border:1px solid rgba(99,102,241,.3);border-radius:10px;padding:14px;margin-bottom:8px">`;
+    html += `<h4 style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Do This Next</h4>`;
+    if (isStale) {
+      html += `<div style="font-size:14px;font-weight:700;color:var(--red)">Follow up now &mdash; ${item.daysInactive} days since last update</div>`;
+      if (primaryContact) {
+        html += `<div style="font-size:12px;color:var(--dim);margin-top:4px">Send ${primaryContact.email ? 'email' : 'LinkedIn message'} to ${esc(primaryContact.name)}</div>`;
+      }
+    } else if (job.status === 'new' || job.status === 'researching') {
+      if (primaryContact && job.outreach_draft) {
+        html += `<div style="font-size:14px;font-weight:700;color:var(--text)">Apply and send outreach to ${esc(primaryContact.name)}</div>`;
+      } else if (primaryContact) {
+        html += `<div style="font-size:14px;font-weight:700;color:var(--text)">Apply and reach out to ${esc(primaryContact.name)}</div>`;
+      } else if (job.outreach_draft) {
+        html += `<div style="font-size:14px;font-weight:700;color:var(--text)">Apply and use outreach draft to connect</div>`;
+      } else {
+        html += `<div style="font-size:14px;font-weight:700;color:var(--text)">Research company and find decision maker</div>`;
+      }
+    } else if (job.status === 'applied') {
+      html += `<div style="font-size:14px;font-weight:700;color:var(--text)">Follow up on application${primaryContact ? ' with ' + esc(primaryContact.name) : ''}</div>`;
+    } else if (job.status === 'interviewing') {
+      html += `<div style="font-size:14px;font-weight:700;color:var(--text)">Prepare for next interview round</div>`;
+    } else if (job.status === 'offer') {
+      html += `<div style="font-size:14px;font-weight:700;color:var(--green)">Review and negotiate offer</div>`;
+    } else {
+      html += `<div style="font-size:14px;font-weight:700;color:var(--text)">Review and take action</div>`;
+    }
+    html += `</div>`;
+
+    // ── Overdue flag ──
+    if (isStale) {
+      html += `<div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:10px;padding:12px;margin-bottom:8px;display:flex;align-items:center;gap:10px">`;
+      html += `<span style="font-size:20px">&#9888;</span>`;
+      html += `<div><div style="font-size:13px;font-weight:700;color:var(--red)">Stale &mdash; ${item.daysInactive} days since last activity</div>`;
+      html += `<div style="font-size:11px;color:var(--dim)">Applications without follow-up are often overlooked. Reach out now.</div>`;
+      html += `</div></div>`;
+    }
+
+    // ── Hot Signals ──
+    if (signals.length > 0) {
+      html += `<div style="background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.2);border-radius:10px;padding:14px;margin-bottom:8px">`;
+      html += `<h4 style="font-size:11px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Hot Signals (${signals.length})</h4>`;
+      signals.forEach(s => {
+        html += `<div style="margin-bottom:6px">`;
+        html += `<div style="display:flex;justify-content:space-between;align-items:center">`;
+        html += `<span style="font-size:12px;color:var(--text);font-weight:600">${signalTypeLabel(s.signal_type)}</span>`;
+        html += `<span style="font-size:10px;color:var(--dim)">${timeAgo(s.created_at)}</span>`;
+        html += `</div>`;
+        html += `<div style="font-size:12px;color:var(--dim);margin-top:2px">${esc(s.summary)}</div>`;
+        if (s.ai_recommendation) html += `<div style="font-size:11px;color:var(--accent);margin-top:3px;font-style:italic">${esc(s.ai_recommendation)}</div>`;
+        html += `</div>`;
+      });
+      html += `</div>`;
+    }
+
+    // ── Two-column: Job Details | Decision Maker ──
+    html += `<div class="card-detail-row">`;
+
+    // Job Details column
+    html += `<div class="card-detail-section">`;
+    html += `<h4>Job Details</h4>`;
+    html += `<div style="font-size:12px;line-height:1.8;color:var(--dim)">`;
+    html += `<div><strong style="color:var(--text)">${esc(job.company)}</strong> &mdash; ${esc(job.title)}</div>`;
+    html += `<div><strong style="color:var(--text)">Status:</strong> ${formatStatus(job.status)}</div>`;
+    if (score > 0) html += `<div><strong style="color:var(--text)">Fit Score:</strong> <span style="color:${scoreColor};font-weight:700">${score}/100</span></div>`;
+    if (salary) html += `<div><strong style="color:var(--text)">Salary:</strong> <span style="color:var(--green)">${salary}</span></div>`;
+    if (job.location) html += `<div><strong style="color:var(--text)">Location:</strong> ${esc(job.location)}${job.remote ? ' (Remote)' : ''}</div>`;
+    if (job.source) html += `<div><strong style="color:var(--text)">Source:</strong> ${esc(job.source)}</div>`;
+    if (job.resume_variant || job.resume_version) html += `<div><strong style="color:var(--text)">Resume:</strong> ${esc(job.resume_variant || job.resume_version)}</div>`;
+    if (job.applied_at) html += `<div><strong style="color:var(--text)">Applied:</strong> ${formatDate(job.applied_at)}</div>`;
+    if (job.url) html += `<div><a href="${esc(job.url)}" target="_blank" style="color:var(--accent);text-decoration:none" onclick="event.stopPropagation()">View posting &#8599;</a></div>`;
+    html += `</div></div>`;
+
+    // Decision Maker / Contact column
+    html += `<div class="card-detail-section">`;
+    html += `<h4>Decision Maker${linkedContacts.length > 1 ? 's (' + linkedContacts.length + ')' : ''}</h4>`;
+    if (linkedContacts.length > 0) {
+      linkedContacts.forEach(c => {
+        html += `<div style="font-size:12px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border)">`;
+        if (c.linkedin_url) {
+          html += `<div><a href="${esc(c.linkedin_url)}" target="_blank" style="color:var(--cyan);text-decoration:none;font-weight:600" onclick="event.stopPropagation()">${esc(c.name)}</a></div>`;
+        } else {
+          html += `<div><strong style="color:var(--text)">${esc(c.name)}</strong></div>`;
+        }
+        if (c.title) html += `<div style="color:var(--dim)">${esc(c.title)}</div>`;
+        if (c.email) {
+          html += `<div style="margin-top:2px"><a href="mailto:${esc(c.email)}" style="font-size:11px;color:var(--green);text-decoration:none" onclick="event.stopPropagation()">${esc(c.email)}</a>`;
+          if (c.email_status) html += ` <span style="font-size:9px;color:${c.email_status === 'verified' ? 'var(--green)' : c.email_status === 'bounced' ? 'var(--red)' : 'var(--dim)'}">${c.email_status}</span>`;
+          html += `</div>`;
+        }
+        if (c.linkedin_url) html += `<div style="margin-top:2px"><a href="${esc(c.linkedin_url)}" target="_blank" style="font-size:11px;color:var(--accent);text-decoration:none" onclick="event.stopPropagation()">LinkedIn &#8599;</a></div>`;
+        if (c.warmth_score != null && c.warmth_score > 0) {
+          const warmColor = c.warmth_score >= 50 ? 'var(--red)' : c.warmth_score >= 20 ? 'var(--orange)' : 'var(--yellow)';
+          html += `<div style="margin-top:2px;font-size:11px">Warmth: <span style="color:${warmColor};font-weight:600">${c.warmth_score}</span></div>`;
+        }
+        if (c.last_contacted_at) html += `<div style="font-size:11px;color:var(--dim)">Last contact: ${timeAgo(c.last_contacted_at)}</div>`;
+        html += `</div>`;
+      });
+    } else {
+      html += `<div style="font-size:12px;color:var(--dim);font-style:italic">No contacts linked yet.</div>`;
+      html += `<div style="font-size:11px;color:var(--accent);margin-top:6px">Research the company and find a hiring manager or recruiter on LinkedIn.</div>`;
+    }
+    html += `</div>`;
+    html += `</div>`; // end card-detail-row
+
+    // ── Outreach Draft (inline, copy-ready) ──
+    if (job.outreach_draft) {
+      html += `<div style="background:rgba(99,102,241,.06);border:1px solid rgba(99,102,241,.2);border-radius:10px;padding:14px;margin-top:8px">`;
+      html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">`;
+      html += `<h4 style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:1px;margin:0">Outreach Draft</h4>`;
+      const odKey = cacheDraft(job.outreach_draft);
+      html += `<div style="display:flex;gap:6px">`;
+      html += `<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();navigator.clipboard.writeText(_draftCache['${odKey}']);showToast('Draft copied','success')" style="font-size:10px">Copy</button>`;
+      html += `<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();showDraftByKey('${odKey}')" style="font-size:10px">Expand</button>`;
+      html += `</div></div>`;
+      html += `<div style="font-size:12px;color:var(--dim);line-height:1.7;white-space:pre-wrap;max-height:140px;overflow-y:auto;padding:10px;background:rgba(255,255,255,.02);border-radius:6px;border-left:2px solid rgba(99,102,241,.3)">${esc(job.outreach_draft)}</div>`;
+      html += `</div>`;
+    }
+
+    // ── Apply Links ──
+    const applyHtml = renderApplyButtons(job);
+    if (applyHtml) {
+      html += `<div style="margin-top:8px">${applyHtml}</div>`;
+    }
+
+    // ── Outreach History (loaded async via dossier) ──
+    const dossier = dossierCache[job.id] || {};
+    const loaded = !!dossierCache[job.id];
+    const outreach = dossier.outreach || [];
+    if (outreach.length > 0) {
+      html += `<div class="card-detail-section" style="margin-top:8px">`;
+      html += `<h4>Outreach History (${outreach.length})</h4>`;
+      [...outreach].sort((a, b) => new Date(b.sent_at) - new Date(a.sent_at)).slice(0, 3).forEach(o => {
+        const cName = o.v2_contacts?.name || 'Unknown';
+        const hasResp = o.response_received;
+        html += `<div style="margin-bottom:8px;padding:8px;background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:8px;border-left:3px solid ${hasResp ? 'var(--green)' : 'var(--dim)'}">`;
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">`;
+        html += `<span style="font-size:12px;font-weight:600;color:var(--text)">${channelIcon(o.channel)} ${channelLabel(o.channel)} &#8594; ${esc(cName)}</span>`;
+        html += `<span style="font-size:11px;color:var(--dim)">${formatDate(o.sent_at)}</span>`;
+        html += `</div>`;
+        if (o.subject_line) html += `<div style="font-size:11px;color:var(--dim)">Subject: ${esc(o.subject_line)}</div>`;
+        if (o.message_text) html += `<div style="font-size:11px;color:var(--dim);margin-top:3px;max-height:50px;overflow:hidden;white-space:pre-wrap">${esc(o.message_text.substring(0, 200))}${o.message_text.length > 200 ? '...' : ''}</div>`;
+        if (hasResp) {
+          html += `<div style="margin-top:4px;padding:4px 6px;background:rgba(6,182,212,.06);border:1px solid rgba(6,182,212,.15);border-radius:4px">`;
+          html += `<span style="font-size:10px;font-weight:700;color:var(--cyan);text-transform:uppercase;letter-spacing:1px">Reply</span> `;
+          if (o.response_text) html += `<span style="font-size:11px;color:var(--text)">${esc(o.response_text.substring(0, 150))}${o.response_text.length > 150 ? '...' : ''}</span>`;
+          html += `</div>`;
+        }
+        html += `</div>`;
+      });
+      html += `</div>`;
+    } else if (!loaded) {
+      html += `<div style="margin-top:8px;font-size:12px;color:var(--dim);font-style:italic">Loading outreach history...</div>`;
+    }
+
+    // ── Follow-ups (from dossier) ──
+    const followups = dossier.followups || [];
+    if (followups.length > 0) {
+      const today = new Date().toISOString().split('T')[0];
+      html += `<div class="card-detail-section" style="margin-top:8px">`;
+      html += `<h4>Follow-ups (${followups.length})</h4>`;
+      [...followups].sort((a, b) => (a.due_date || '').localeCompare(b.due_date || '')).slice(0, 3).forEach(f => {
+        const fOverdue = f.due_date && f.due_date < today;
+        html += `<div style="margin-bottom:6px;padding:6px 8px;background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:6px;border-left:3px solid ${fOverdue ? 'var(--red)' : 'var(--yellow)'}">`;
+        html += `<span style="font-size:12px;font-weight:600;color:${fOverdue ? 'var(--red)' : 'var(--text)'}">${fOverdue ? 'OVERDUE' : 'Due'}: ${formatDate(f.due_date)}</span>`;
+        html += `<div style="font-size:11px;color:var(--dim);margin-top:2px">${esc(f.reason || 'Follow up')}</div>`;
+        html += `</div>`;
+      });
+      html += `</div>`;
+    }
+
+    // ── Action Buttons ──
+    html += `<div class="card-detail-actions" style="margin-top:10px">`;
+    html += renderApplyButtons(job);
+    if (job.status === 'new' || job.status === 'researching') html += `<button class="btn btn-success btn-sm" onclick="event.stopPropagation();updateJobStatus('${job.id}','applied')">Mark Applied</button>`;
+    if (job.status === 'applied') html += `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();updateJobStatus('${job.id}','interviewing')">Move to Interviewing</button>`;
+    if (job.status === 'interviewing') html += `<button class="btn btn-success btn-sm" onclick="event.stopPropagation();updateJobStatus('${job.id}','offer')">Mark Offer</button>`;
+    if (job.status !== 'rejected') html += `<button class="btn btn-danger btn-sm" onclick="event.stopPropagation();updateJobStatus('${job.id}','rejected')">Reject</button>`;
+    html += `<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();navigateTo('pipeline')">View in Pipeline</button>`;
+    html += `</div>`;
+
+    html += `</div>`;
+    return html;
   }
 
+  // ── FOLLOW-UP ITEMS ──
   if (item.type === 'followup') {
     const followup = cachedFollowupsBP.find(f => f.id === item.followupId);
     if (!followup) return '';
     const contact = followup.v2_contacts || {};
+    const fullContact = cachedContacts.find(c => c.id === contact.id) || contact;
     const job = followup.v2_jobs || cachedJobs.find(j => j.id === followup.job_id) || {};
+    const fullJob = cachedJobs.find(j => j.id === followup.job_id) || job;
+    const jobScore = fullJob.match_score || fullJob.fit_score || 0;
+    const scoreColor = jobScore >= 80 ? 'var(--green)' : jobScore >= 60 ? 'var(--yellow)' : 'var(--dim)';
+    const salary = fullJob.salary_min || fullJob.salary_max ? formatSalary(fullJob) : null;
+    const isOverdue = item.daysInactive > 0;
+    const dossier = fullJob.id ? (dossierCache[fullJob.id] || {}) : {};
+    const outreach = dossier.outreach || [];
+    // Find the last outreach to this contact
+    const lastOutreach = outreach.length > 0
+      ? [...outreach].sort((a, b) => new Date(b.sent_at) - new Date(a.sent_at))[0]
+      : null;
 
     let html = `<div class="action-detail">`;
+
+    // ── DO THIS NEXT banner ──
+    html += `<div style="background:linear-gradient(135deg,${isOverdue ? 'rgba(239,68,68,.12),rgba(239,68,68,.06)' : 'rgba(99,102,241,.14),rgba(139,92,246,.08)'});border:1px solid ${isOverdue ? 'rgba(239,68,68,.3)' : 'rgba(99,102,241,.3)'};border-radius:10px;padding:14px;margin-bottom:8px">`;
+    html += `<h4 style="font-size:11px;font-weight:700;color:${isOverdue ? 'var(--red)' : 'var(--accent)'};text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">${isOverdue ? 'Overdue &mdash; Act Now' : 'Do This Next'}</h4>`;
+    // Build specific instruction
+    let nextInstruction = '';
+    if (fullContact.email && fullContact.linkedin_url) {
+      nextInstruction = `Send follow-up email to ${esc(fullContact.name)} or send LinkedIn DM`;
+    } else if (fullContact.email) {
+      nextInstruction = `Send follow-up email to ${esc(fullContact.name)}`;
+    } else if (fullContact.linkedin_url) {
+      nextInstruction = `Send LinkedIn DM to ${esc(fullContact.name)}`;
+    } else if (fullContact.name) {
+      nextInstruction = `Follow up with ${esc(fullContact.name)}`;
+    } else {
+      nextInstruction = 'Escalate to new contact at the company';
+    }
+    html += `<div style="font-size:14px;font-weight:700;color:var(--text)">${nextInstruction}</div>`;
+    if (isOverdue) {
+      html += `<div style="font-size:12px;color:var(--red);margin-top:4px;font-weight:600">${item.daysInactive} day${item.daysInactive !== 1 ? 's' : ''} overdue</div>`;
+    }
+    html += `</div>`;
+
+    // ── Draft follow-up message (from follow-up data or outreach_draft) ──
+    const draftMessage = followup.draft_message || (fullJob.outreach_draft ? fullJob.outreach_draft : null);
+    if (draftMessage) {
+      html += `<div style="background:rgba(99,102,241,.06);border:1px solid rgba(99,102,241,.2);border-radius:10px;padding:14px;margin-bottom:8px">`;
+      html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">`;
+      html += `<h4 style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:1px;margin:0">Draft Message</h4>`;
+      const dmKey = cacheDraft(draftMessage);
+      html += `<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();navigator.clipboard.writeText(_draftCache['${dmKey}']);showToast('Message copied','success')" style="font-size:10px">Copy</button>`;
+      html += `</div>`;
+      html += `<div style="font-size:12px;color:var(--dim);line-height:1.7;white-space:pre-wrap;max-height:140px;overflow-y:auto;padding:10px;background:rgba(255,255,255,.02);border-radius:6px;border-left:2px solid rgba(99,102,241,.3)">${esc(draftMessage)}</div>`;
+      html += `</div>`;
+    }
+
+    // ── Two columns: Contact | Job ──
     html += `<div class="card-detail-row">`;
 
     // Contact info
     html += `<div class="card-detail-section">`;
     html += `<h4>Contact</h4>`;
     html += `<div style="font-size:12px;line-height:1.8;color:var(--dim)">`;
-    if (contact.name) html += `<div><strong style="color:var(--text)">${esc(contact.name)}</strong></div>`;
-    if (contact.title) html += `<div>${esc(contact.title)}</div>`;
-    if (contact.company) html += `<div>${esc(contact.company)}</div>`;
-    if (contact.email) html += `<div><a href="mailto:${esc(contact.email)}" style="color:var(--accent)" onclick="event.stopPropagation()">${esc(contact.email)}</a></div>`;
-    if (contact.linkedin_url) html += `<div><a href="${esc(contact.linkedin_url)}" target="_blank" style="color:var(--accent)" onclick="event.stopPropagation()">LinkedIn &#8599;</a></div>`;
-    if (contact.phone) html += `<div>${esc(contact.phone)}</div>`;
+    if (fullContact.name) html += `<div><strong style="color:var(--text)">${esc(fullContact.name)}</strong></div>`;
+    if (fullContact.title) html += `<div>${esc(fullContact.title)}</div>`;
+    if (fullContact.company) html += `<div>${esc(fullContact.company)}</div>`;
+    if (fullContact.email) html += `<div><a href="mailto:${esc(fullContact.email)}" style="color:var(--green);text-decoration:none" onclick="event.stopPropagation()">${esc(fullContact.email)}</a></div>`;
+    if (fullContact.linkedin_url) html += `<div><a href="${esc(fullContact.linkedin_url)}" target="_blank" style="color:var(--accent);text-decoration:none" onclick="event.stopPropagation()">LinkedIn &#8599;</a></div>`;
+    if (fullContact.phone) html += `<div>${esc(fullContact.phone)}</div>`;
+    if (fullContact.warmth_score != null && fullContact.warmth_score > 0) {
+      const warmColor = fullContact.warmth_score >= 50 ? 'var(--red)' : fullContact.warmth_score >= 20 ? 'var(--orange)' : 'var(--yellow)';
+      html += `<div style="margin-top:2px">Warmth: <span style="color:${warmColor};font-weight:600">${fullContact.warmth_score}</span></div>`;
+    }
+    if (fullContact.last_contacted_at) html += `<div style="margin-top:2px;color:var(--dim)">Last contact: ${timeAgo(fullContact.last_contacted_at)}</div>`;
     html += `</div></div>`;
 
     // Job context
     html += `<div class="card-detail-section">`;
     html += `<h4>Related Job</h4>`;
     html += `<div style="font-size:12px;line-height:1.8;color:var(--dim)">`;
-    if (job.company || job.title) html += `<div><strong style="color:var(--text)">${esc(job.company || '')}</strong>${job.title ? ' - ' + esc(job.title) : ''}</div>`;
-    if (job.status) html += `<div><strong style="color:var(--text)">Status:</strong> ${formatStatus(job.status)}</div>`;
-    const jobScore = job.match_score || job.fit_score || 0;
-    if (jobScore > 0) html += `<div><strong style="color:var(--text)">Match:</strong> ${jobScore}%</div>`;
+    if (fullJob.company || fullJob.title) html += `<div><strong style="color:var(--text)">${esc(fullJob.company || '')}</strong>${fullJob.title ? ' &mdash; ' + esc(fullJob.title) : ''}</div>`;
+    if (fullJob.status) html += `<div><strong style="color:var(--text)">Status:</strong> ${formatStatus(fullJob.status)}</div>`;
+    if (jobScore > 0) html += `<div><strong style="color:var(--text)">Fit Score:</strong> <span style="color:${scoreColor};font-weight:700">${jobScore}/100</span></div>`;
+    if (salary) html += `<div><strong style="color:var(--text)">Salary:</strong> <span style="color:var(--green)">${salary}</span></div>`;
+    if (fullJob.location) html += `<div><strong style="color:var(--text)">Location:</strong> ${esc(fullJob.location)}${fullJob.remote ? ' (Remote)' : ''}</div>`;
+    if (fullJob.applied_at) html += `<div><strong style="color:var(--text)">Applied:</strong> ${formatDate(fullJob.applied_at)}</div>`;
     html += `</div></div>`;
 
-    html += `</div>`; // end row
+    html += `</div>`; // end card-detail-row
+
+    // ── Last Outreach ──
+    if (lastOutreach) {
+      html += `<div class="card-detail-section" style="margin-top:8px">`;
+      html += `<h4>Last Outreach</h4>`;
+      const cName = lastOutreach.v2_contacts?.name || 'Unknown';
+      const hasResp = lastOutreach.response_received;
+      html += `<div style="padding:8px;background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:8px;border-left:3px solid ${hasResp ? 'var(--green)' : 'var(--dim)'}">`;
+      html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">`;
+      html += `<span style="font-size:12px;font-weight:600;color:var(--text)">${channelIcon(lastOutreach.channel)} ${channelLabel(lastOutreach.channel)} &#8594; ${esc(cName)}</span>`;
+      html += `<span style="font-size:11px;color:var(--dim)">${formatDate(lastOutreach.sent_at)}</span>`;
+      html += `</div>`;
+      if (lastOutreach.subject_line) html += `<div style="font-size:11px;color:var(--dim)">Subject: ${esc(lastOutreach.subject_line)}</div>`;
+      if (lastOutreach.message_text) html += `<div style="font-size:11px;color:var(--dim);margin-top:3px;max-height:50px;overflow:hidden;white-space:pre-wrap">${esc(lastOutreach.message_text.substring(0, 200))}${lastOutreach.message_text.length > 200 ? '...' : ''}</div>`;
+      if (hasResp && lastOutreach.response_text) {
+        html += `<div style="margin-top:4px;padding:4px 6px;background:rgba(6,182,212,.06);border:1px solid rgba(6,182,212,.15);border-radius:4px">`;
+        html += `<span style="font-size:10px;font-weight:700;color:var(--cyan);text-transform:uppercase;letter-spacing:1px">Reply</span> `;
+        html += `<span style="font-size:11px;color:var(--text)">${esc(lastOutreach.response_text.substring(0, 150))}${lastOutreach.response_text.length > 150 ? '...' : ''}</span>`;
+        html += `</div>`;
+      }
+      html += `</div></div>`;
+    }
 
     if (followup.notes) {
       html += `<div style="font-size:12px;color:var(--dim);font-style:italic;padding:8px 0">${esc(followup.notes)}</div>`;
@@ -2371,32 +2644,79 @@ function renderBPItemDetail(item) {
 
     html += `<div class="detail-actions">`;
     html += `<button class="btn btn-success btn-sm" onclick="event.stopPropagation();markBPFollowupDone('${item.followupId}')">Mark Done</button>`;
-    if (contact.email) html += `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();window.open('mailto:${esc(contact.email)}','_blank')">Send Email</button>`;
-    if (contact.linkedin_url) html += `<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();window.open('${esc(contact.linkedin_url)}','_blank')">Open LinkedIn</button>`;
+    if (fullContact.email) html += `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();window.open('mailto:${esc(fullContact.email)}','_blank')">Send Email</button>`;
+    if (fullContact.linkedin_url) html += `<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();window.open('${esc(fullContact.linkedin_url)}','_blank')">Open LinkedIn</button>`;
     if (followup.job_id) html += `<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();navigateTo('pipeline')">View Job</button>`;
     html += `</div>`;
     html += `</div>`;
     return html;
   }
 
-  // planAction / contactAction - show what info we have
+  // ── CONTACT ACTION ITEMS ──
   if (item.type === 'contactAction') {
+    const contact = item.contactName
+      ? cachedContacts.find(c => c.name && c.name.toLowerCase() === item.contactName.toLowerCase())
+      : null;
+
     let html = `<div class="action-detail">`;
-    html += `<div style="font-size:12px;color:var(--dim);line-height:1.6">`;
-    if (item.company) html += `<div><strong style="color:var(--text)">Company:</strong> ${esc(item.company)}</div>`;
-    if (item.contactName) {
-      const contact = cachedContacts.find(c => c.name && c.name.toLowerCase() === item.contactName.toLowerCase());
-      if (contact) {
-        if (contact.title) html += `<div><strong style="color:var(--text)">Title:</strong> ${esc(contact.title)}</div>`;
-        if (contact.email) html += `<div><a href="mailto:${esc(contact.email)}" style="color:var(--accent)" onclick="event.stopPropagation()">${esc(contact.email)}</a></div>`;
-        if (contact.linkedin_url) html += `<div><a href="${esc(contact.linkedin_url)}" target="_blank" style="color:var(--accent)" onclick="event.stopPropagation()">LinkedIn &#8599;</a></div>`;
-      }
+
+    // Instruction banner
+    html += `<div style="background:linear-gradient(135deg,rgba(99,102,241,.14),rgba(139,92,246,.08));border:1px solid rgba(99,102,241,.3);border-radius:10px;padding:14px;margin-bottom:8px">`;
+    html += `<h4 style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Do This Next</h4>`;
+    if (contact && contact.email) {
+      html += `<div style="font-size:14px;font-weight:700;color:var(--text)">Send outreach to ${esc(contact.name)} via email</div>`;
+    } else if (contact && contact.linkedin_url) {
+      html += `<div style="font-size:14px;font-weight:700;color:var(--text)">Connect with ${esc(contact.name)} on LinkedIn</div>`;
+    } else {
+      html += `<div style="font-size:14px;font-weight:700;color:var(--text)">Reach out to ${esc(item.contactName || 'contact')}${item.company ? ' at ' + esc(item.company) : ''}</div>`;
     }
     html += `</div>`;
-    html += `<div class="detail-actions" style="margin-top:8px">`;
+
+    // Contact details
+    html += `<div style="font-size:12px;color:var(--dim);line-height:1.8">`;
+    if (item.company) html += `<div><strong style="color:var(--text)">Company:</strong> ${esc(item.company)}</div>`;
+    if (contact) {
+      if (contact.name) html += `<div><strong style="color:var(--text)">Name:</strong> ${esc(contact.name)}</div>`;
+      if (contact.title) html += `<div><strong style="color:var(--text)">Title:</strong> ${esc(contact.title)}</div>`;
+      if (contact.email) html += `<div><strong style="color:var(--text)">Email:</strong> <a href="mailto:${esc(contact.email)}" style="color:var(--green);text-decoration:none" onclick="event.stopPropagation()">${esc(contact.email)}</a></div>`;
+      if (contact.linkedin_url) html += `<div><strong style="color:var(--text)">LinkedIn:</strong> <a href="${esc(contact.linkedin_url)}" target="_blank" style="color:var(--accent);text-decoration:none" onclick="event.stopPropagation()">Profile &#8599;</a></div>`;
+      if (contact.phone) html += `<div><strong style="color:var(--text)">Phone:</strong> ${esc(contact.phone)}</div>`;
+      if (contact.warmth_score != null && contact.warmth_score > 0) {
+        const warmColor = contact.warmth_score >= 50 ? 'var(--red)' : contact.warmth_score >= 20 ? 'var(--orange)' : 'var(--yellow)';
+        html += `<div><strong style="color:var(--text)">Warmth:</strong> <span style="color:${warmColor};font-weight:600">${contact.warmth_score}</span></div>`;
+      }
+      if (contact.last_contacted_at) html += `<div style="color:var(--dim)">Last contact: ${timeAgo(contact.last_contacted_at)}</div>`;
+    }
+    html += `</div>`;
+
+    // Draft message if available via battle plan
+    if (item.draft) {
+      const dcKey = cacheDraft(item.draft);
+      html += `<div style="background:rgba(99,102,241,.06);border:1px solid rgba(99,102,241,.2);border-radius:10px;padding:14px;margin-top:8px">`;
+      html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">`;
+      html += `<h4 style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:1px;margin:0">Draft Message</h4>`;
+      html += `<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();navigator.clipboard.writeText(_draftCache['${dcKey}']);showToast('Message copied','success')" style="font-size:10px">Copy</button>`;
+      html += `</div>`;
+      html += `<div style="font-size:12px;color:var(--dim);line-height:1.7;white-space:pre-wrap;max-height:140px;overflow-y:auto;padding:10px;background:rgba(255,255,255,.02);border-radius:6px;border-left:2px solid rgba(99,102,241,.3)">${esc(item.draft)}</div>`;
+      html += `</div>`;
+    }
+
+    html += `<div class="detail-actions" style="margin-top:10px">`;
+    if (contact && contact.email) html += `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();window.open('mailto:${esc(contact.email)}','_blank')">Send Email</button>`;
+    if (contact && contact.linkedin_url) html += `<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();window.open('${esc(contact.linkedin_url)}','_blank')">Open LinkedIn</button>`;
     html += `<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();navigateTo('network')">View in Network</button>`;
     html += `</div>`;
     html += `</div>`;
+    return html;
+  }
+
+  // ── PLAN ACTION ITEMS ──
+  if (item.type === 'planAction') {
+    let html = `<div class="action-detail">`;
+    html += `<div style="font-size:12px;color:var(--dim);line-height:1.6;padding:4px 0">`;
+    html += `<div style="font-size:13px;color:var(--text);font-weight:600;margin-bottom:6px">${esc(item.title)}</div>`;
+    html += `<div style="color:var(--dim)">This action was generated by today\'s battle plan based on your pipeline analysis.</div>`;
+    html += `</div></div>`;
     return html;
   }
 
@@ -2852,9 +3172,9 @@ function renderBattlePlan() {
         contactName: pc.name,
         type: 'contactAction',
         followupId: null,
-        jobId: null,
+        jobId: pc.job_id || null,
         url: null,
-        draft: null,
+        draft: pc.draft_message || null,
         daysInactive: 0,
       });
     });
