@@ -2317,9 +2317,6 @@ function toggleActionItem(itemId) {
       if (item && item.jobId) setTimeout(() => loadDossierForCard(item.jobId), 0);
     }
   } catch (err) {
-    document.body.insertAdjacentHTML('afterbegin',
-      '<div style="background:red;color:white;padding:20px;position:fixed;top:0;left:0;right:0;z-index:99999;font-size:18px">' +
-      'ERROR in toggleActionItem: ' + err.message + '<br><pre>' + err.stack + '</pre></div>');
     console.error('toggleActionItem FATAL:', err);
   }
 }
@@ -3280,7 +3277,6 @@ function renderBattlePlan() {
       </div>`;
   }).join('');
   } catch (e) {
-    document.body.insertAdjacentHTML('afterbegin', '<div style="background:red;color:white;padding:20px;position:fixed;top:0;left:0;right:0;z-index:99999;font-size:18px">ERROR in renderBattlePlan: ' + e.message + '</div>');
     console.error('renderBattlePlan FATAL:', e);
   }
 }
