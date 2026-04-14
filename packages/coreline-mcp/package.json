@@ -1,0 +1,26 @@
+{
+  "name": "coreline-mcp",
+  "version": "1.0.0",
+  "description": "MCP bridge for Core Line — connects any AI client to the Core Line career engine via stdio",
+  "bin": {
+    "coreline-mcp": "./bin/coreline-mcp.js"
+  },
+  "files": [
+    "bin/"
+  ],
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "coreline",
+    "ai",
+    "career"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/micahbaird/coreline-v2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

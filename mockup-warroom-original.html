@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Core Line — War Room</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#06060b;
+  --card:#0d0d17;
+  --border:rgba(255,255,255,0.06);
+  --border-glow:rgba(99,102,241,0.3);
+  --text:#e4e4f0;
+  --dim:#52525e;
+  --accent:#6366f1;
+  --accent2:#8b5cf6;
+  --cyan:#06b6d4;
+  --green:#22c55e;
+  --yellow:#eab308;
+  --orange:#f97316;
+  --red:#ef4444;
+  --blue:#3b82f6;
+}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
+
+/* Ambient glow */
+body::before{content:'';position:fixed;top:-200px;left:50%;transform:translateX(-50%);width:900px;height:600px;background:radial-gradient(ellipse,rgba(99,102,241,0.07) 0%,transparent 70%);pointer-events:none;z-index:0}
+
+/* Layout */
+.app{display:grid;grid-template-columns:240px 1fr;grid-template-rows:56px 1fr;min-height:100vh;position:relative;z-index:1}
+
+/* Top bar */
+.topbar{grid-column:1/-1;display:flex;align-items:center;padding:0 24px;border-bottom:1px solid var(--border);background:rgba(6,6,11,0.9);backdrop-filter:blur(20px);position:sticky;top:0;z-index:100}
+.logo{font-size:18px;font-weight:800;letter-spacing:3px;background:linear-gradient(135deg,#fff,#a5b4fc);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-right:40px}
+.logo span{color:var(--accent);-webkit-text-fill-color:var(--accent)}
+.ai-status{display:flex;align-items:center;gap:8px;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.2);border-radius:20px;padding:6px 14px;font-size:12px;font-weight:600;color:var(--green);margin-left:auto}
+.ai-dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.ai-label{color:var(--dim);font-weight:400;margin-left:4px}
+.topbar-right{display:flex;align-items:center;gap:12px;margin-left:24px}
+.avatar{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700}
+
+/* Sidebar */
+.sidebar{border-right:1px solid var(--border);padding:24px 0;background:rgba(13,13,23,0.6)}
+.nav-section{margin-bottom:32px}
+.nav-label{font-size:10px;font-weight:700;letter-spacing:2px;color:var(--dim);padding:0 20px;margin-bottom:8px;text-transform:uppercase}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 20px;font-size:13px;font-weight:500;color:var(--dim);cursor:pointer;transition:all .15s;border-left:2px solid transparent}
+.nav-item:hover{color:var(--text);background:rgba(255,255,255,0.03)}
+.nav-item.active{color:var(--text);background:rgba(99,102,241,0.08);border-left-color:var(--accent)}
+.nav-icon{font-size:15px;width:20px;text-align:center}
+.nav-badge{margin-left:auto;background:var(--accent);color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px}
+.nav-badge.green{background:var(--green)}
+
+/* Main content */
+.main{padding:28px;overflow-y:auto;display:flex;flex-direction:column;gap:24px}
+
+/* Section headers */
+.section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.section-title{font-size:14px;font-weight:700;letter-spacing:.5px}
+.section-meta{font-size:12px;color:var(--dim)}
+
+/* Stats row */
+.stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+.stat-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px;position:relative;overflow:hidden;transition:border-color .2s}
+.stat-card:hover{border-color:var(--border-glow)}
+.stat-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--glow-color,var(--accent));opacity:.6}
+.stat-num{font-size:32px;font-weight:800;line-height:1}
+.stat-label{font-size:11px;color:var(--dim);margin-top:6px;text-transform:uppercase;letter-spacing:1px}
+.stat-delta{font-size:11px;font-weight:600;margin-top:8px}
+.stat-delta.up{color:var(--green)}
+.stat-delta.neutral{color:var(--dim)}
+
+/* Battle plan */
+.battle-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.target-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px;cursor:pointer;transition:all .2s;position:relative}
+.target-card:hover{border-color:var(--border-glow);transform:translateY(-1px)}
+.target-card.hot{border-color:rgba(99,102,241,0.4)}
+.target-card.hot::after{content:'🔥 HOT';position:absolute;top:14px;right:14px;font-size:10px;font-weight:700;color:var(--accent);letter-spacing:1px}
+.target-company{font-size:15px;font-weight:700;margin-bottom:4px}
+.target-role{font-size:12px;color:var(--dim);margin-bottom:12px}
+.target-meta{display:flex;gap:8px;flex-wrap:wrap}
+.tag{font-size:11px;font-weight:600;padding:3px 10px;border-radius:6px;border:1px solid}
+.tag.stage-screener{color:#eab308;border-color:rgba(234,179,8,.3);background:rgba(234,179,8,.08)}
+.tag.stage-cto{color:var(--accent);border-color:rgba(99,102,241,.3);background:rgba(99,102,241,.08)}
+.tag.stage-applied{color:var(--dim);border-color:rgba(255,255,255,.1);background:rgba(255,255,255,.04)}
+.tag.salary{color:var(--green);border-color:rgba(34,197,94,.3);background:rgba(34,197,94,.08)}
+.tag.location{color:var(--cyan);border-color:rgba(6,182,212,.3);background:rgba(6,182,212,.08)}
+.progress-bar{margin-top:14px;height:3px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden}
+.progress-fill{height:100%;border-radius:2px;background:linear-gradient(90deg,var(--accent),var(--accent2))}
+
+/* AI Activity Feed */
+.feed{background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden}
+.feed-header{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
+.feed-title{font-size:13px;font-weight:700}
+.feed-live{font-size:10px;font-weight:700;color:var(--green);letter-spacing:1.5px;background:rgba(34,197,94,.1);padding:3px 8px;border-radius:4px}
+.feed-item{display:flex;gap:14px;padding:14px 20px;border-bottom:1px solid var(--border);align-items:flex-start;transition:background .15s}
+.feed-item:hover{background:rgba(255,255,255,.02)}
+.feed-item:last-child{border-bottom:none}
+.feed-icon{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;margin-top:2px}
+.feed-icon.ai{background:rgba(99,102,241,.15)}
+.feed-icon.user{background:rgba(6,182,212,.15)}
+.feed-icon.system{background:rgba(255,255,255,.05)}
+.feed-body{flex:1}
+.feed-text{font-size:13px;line-height:1.5}
+.feed-text strong{color:#fff;font-weight:600}
+.feed-time{font-size:11px;color:var(--dim);margin-top:3px}
+.feed-agent{font-size:10px;font-weight:700;color:var(--accent);letter-spacing:.5px}
+
+/* Contacts / network */
+.contacts-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.contact-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;display:flex;gap:12px;align-items:center;transition:all .2s;cursor:pointer}
+.contact-card:hover{border-color:var(--border-glow)}
+.contact-avatar{width:40px;height:40px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700}
+.contact-name{font-size:13px;font-weight:600}
+.contact-title{font-size:11px;color:var(--dim);margin-top:2px}
+.contact-company{font-size:11px;color:var(--accent);margin-top:2px;font-weight:500}
+.contact-warmth{margin-top:8px;display:flex;gap:3px}
+.warmth-dot{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.1)}
+.warmth-dot.filled{background:var(--green)}
+.warmth-dot.partial{background:var(--yellow)}
+
+/* AI Chat sidebar panel */
+.ai-panel{background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;display:flex;flex-direction:column}
+.ai-panel-header{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
+.ai-panel-title{font-size:13px;font-weight:700}
+.ai-model-badge{font-size:10px;font-weight:700;color:var(--accent2);background:rgba(139,92,246,.1);border:1px solid rgba(139,92,246,.2);padding:3px 8px;border-radius:4px;margin-left:auto}
+.ai-messages{padding:16px;display:flex;flex-direction:column;gap:12px;max-height:340px;overflow-y:auto}
+.msg{max-width:85%;padding:10px 14px;border-radius:10px;font-size:12px;line-height:1.5}
+.msg.ai{background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.2);align-self:flex-start}
+.msg.user{background:rgba(255,255,255,.05);border:1px solid var(--border);align-self:flex-end}
+.msg-sender{font-size:10px;font-weight:700;margin-bottom:5px;color:var(--dim)}
+.msg.ai .msg-sender{color:var(--accent)}
+.ai-input{padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:10px}
+.ai-input input{flex:1;background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:12px;font-family:inherit;outline:none}
+.ai-input input::placeholder{color:var(--dim)}
+.ai-input input:focus{border-color:var(--border-glow)}
+.send-btn{background:var(--accent);border:none;border-radius:8px;padding:8px 14px;color:#fff;font-size:12px;font-weight:600;cursor:pointer;transition:opacity .15s}
+.send-btn:hover{opacity:.85}
+
+/* Connect AI modal overlay */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(8px);z-index:1000;display:flex;align-items:center;justify-content:center}
+.modal{background:#0f0f1a;border:1px solid rgba(99,102,241,.3);border-radius:20px;padding:40px;max-width:520px;width:100%;margin:20px;position:relative}
+.modal-close{position:absolute;top:16px;right:16px;background:none;border:none;color:var(--dim);font-size:20px;cursor:pointer}
+.modal-close:hover{color:var(--text)}
+.modal-icon{font-size:40px;text-align:center;margin-bottom:16px}
+.modal-title{font-size:22px;font-weight:800;text-align:center;margin-bottom:8px}
+.modal-sub{font-size:14px;color:var(--dim);text-align:center;margin-bottom:28px;line-height:1.6}
+.api-key-box{background:rgba(99,102,241,.06);border:1px solid rgba(99,102,241,.2);border-radius:12px;padding:16px 20px;margin-bottom:20px;font-family:'Courier New',monospace;font-size:13px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.api-key-val{color:var(--accent2);letter-spacing:.5px}
+.copy-btn{background:var(--accent);border:none;border-radius:8px;padding:8px 16px;color:#fff;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap}
+.ai-options{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:24px}
+.ai-option{background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:10px;padding:14px 10px;text-align:center;cursor:pointer;transition:all .2s}
+.ai-option:hover,.ai-option.selected{border-color:var(--border-glow);background:rgba(99,102,241,.08)}
+.ai-option-icon{font-size:24px;margin-bottom:6px;display:flex;align-items:center;justify-content:center;height:32px}
+.ai-option-name{font-size:11px;font-weight:700;letter-spacing:.5px}
+.connect-steps{display:flex;flex-direction:column;gap:10px;margin-bottom:24px}
+.step{display:flex;gap:12px;align-items:flex-start;font-size:13px;line-height:1.5}
+.step-num{width:24px;height:24px;border-radius:50%;background:rgba(99,102,241,.2);border:1px solid var(--accent);color:var(--accent);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px}
+.step-text{color:var(--dim)}
+.step-text strong{color:var(--text)}
+.connect-btn{width:100%;background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;border-radius:12px;padding:14px;color:#fff;font-size:15px;font-weight:700;cursor:pointer;letter-spacing:.5px;transition:opacity .2s}
+.connect-btn:hover{opacity:.9}
+
+/* Two column layout for bottom */
+.two-col{display:grid;grid-template-columns:1fr 340px;gap:16px}
+
+/* Responsive hint */
+@media(max-width:1100px){.battle-grid{grid-template-columns:1fr}.contacts-grid{grid-template-columns:1fr 1fr}.two-col{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<!-- CONNECT AI MODAL (shown on first load) -->
+<div class="modal-overlay" id="connectModal">
+  <div class="modal">
+    <button class="modal-close" onclick="document.getElementById('connectModal').style.display='none'">✕</button>
+    <div class="modal-icon">🧠</div>
+    <h2 class="modal-title">Connect Your AI</h2>
+    <p class="modal-sub">Core Line doesn't have built-in AI.<br>You bring yours. It connects to your battle plan and goes to work.</p>
+
+    <div style="font-size:11px;font-weight:700;color:var(--dim);letter-spacing:1.5px;margin-bottom:10px;text-transform:uppercase">Your API Key</div>
+    <div class="api-key-box">
+      <span class="api-key-val">cl_live_mk4x9r2p...8b7f</span>
+      <button class="copy-btn" onclick="this.textContent='Copied ✓'">Copy Key</button>
+    </div>
+
+    <div style="font-size:11px;font-weight:700;color:var(--dim);letter-spacing:1.5px;margin-bottom:10px;text-transform:uppercase">Choose Your AI</div>
+    <div class="ai-options" style="grid-template-columns:repeat(4,1fr)">
+      <div class="ai-option selected" onclick="selectAI(this)">
+        <div class="ai-option-icon"><img src="https://www.anthropic.com/favicon.ico" style="width:28px;height:28px;object-fit:contain;border-radius:6px"></div>
+        <div class="ai-option-name">Claude</div>
+      </div>
+      <div class="ai-option" onclick="selectAI(this)">
+        <div class="ai-option-icon"><img src="https://cdn.oaistatic.com/assets/favicon-o20kmmos.svg" style="width:28px;height:28px;object-fit:contain;border-radius:6px;background:#fff;padding:2px"></div>
+        <div class="ai-option-name">ChatGPT</div>
+      </div>
+      <div class="ai-option" onclick="selectAI(this)">
+        <div class="ai-option-icon"><img src="https://www.gstatic.com/lamda/images/gemini_sparkle_v002_d4735304ff6292a690345.svg" style="width:28px;height:28px;object-fit:contain"></div>
+        <div class="ai-option-name">Gemini</div>
+      </div>
+      <div class="ai-option" onclick="selectAI(this)" style="border-color:rgba(255,90,54,.4);background:rgba(255,90,54,.06)">
+        <div class="ai-option-icon"><img src="https://mintcdn.com/clawdhub/dpADRo8IUoiDztzJ/assets/pixel-lobster.svg?fit=max&auto=format&n=dpADRo8IUoiDztzJ&q=85&s=8fdf719fb6d3eaad7c65231385bf28e5" style="width:28px;height:28px;object-fit:contain"></div>
+        <div class="ai-option-name" style="color:#FF8A6B">OpenClaw</div>
+      </div>
+    </div>
+
+    <div class="connect-steps" id="connectSteps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-text"><strong>Copy your API key</strong> above</div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-text">Open <strong>Claude Desktop</strong> → <strong>Settings</strong> → <strong>Integrations</strong> → <strong>Add MCP Server</strong>. Name it "Core Line" and paste your key.</div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-text">Start a new chat and say: <strong>"Connect to my Core Line battle plan"</strong> — Claude loads your targets, contacts, and pipeline automatically.</div>
+      </div>
+    </div>
+
+    <button class="connect-btn" onclick="document.getElementById('connectModal').style.display='none'">
+      I've Connected My AI →
+    </button>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div class="app">
+
+  <!-- Top Bar -->
+  <div class="topbar">
+    <div class="logo">CORE<span>LINE</span></div>
+    <div style="display:flex;gap:6px">
+      <div class="nav-item active" style="padding:6px 14px;border-radius:8px;border:none;font-size:12px">War Room</div>
+      <div class="nav-item" style="padding:6px 14px;border-radius:8px;border:none;font-size:12px">Battle Plan</div>
+      <div class="nav-item" style="padding:6px 14px;border-radius:8px;border:none;font-size:12px">Network</div>
+      <div class="nav-item" style="padding:6px 14px;border-radius:8px;border:none;font-size:12px">Outreach</div>
+    </div>
+    <div class="ai-status" style="margin-left:auto">
+      <div class="ai-dot"></div>
+      Claude connected
+      <span class="ai-label">via MCP · 14 tools active</span>
+    </div>
+    <div class="topbar-right">
+      <div class="avatar">M</div>
+    </div>
+  </div>
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="nav-section">
+      <div class="nav-label">Overview</div>
+      <div class="nav-item active" onclick="showView('warroom')"><span class="nav-icon">⚔️</span> War Room</div>
+      <div class="nav-item" onclick="showView('battleplan')"><span class="nav-icon">🎯</span> Battle Plan</div>
+      <div class="nav-item" onclick="showView('pipeline')"><span class="nav-icon">📊</span> Pipeline</div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">Relationships</div>
+      <div class="nav-item"><span class="nav-icon">👥</span> Network <span class="nav-badge">3</span></div>
+      <div class="nav-item"><span class="nav-icon">✉️</span> Outreach</div>
+      <div class="nav-item"><span class="nav-icon">🔔</span> Follow-ups <span class="nav-badge green">5</span></div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">AI</div>
+      <div class="nav-item"><span class="nav-icon">🧠</span> AI Activity</div>
+      <div class="nav-item"><span class="nav-icon">🔑</span> API Keys</div>
+      <div class="nav-item"><span class="nav-icon">⚡</span> Autopilot</div>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div class="main" id="view-warroom">
+
+    <!-- Stats -->
+    <div>
+      <div class="section-header">
+        <div class="section-title">Your Campaign</div>
+        <div class="section-meta">Week 18 · AI updated 4 min ago</div>
+      </div>
+      <div class="stats-row">
+        <div class="stat-card" style="--glow-color:var(--accent)">
+          <div class="stat-num" style="background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent">12</div>
+          <div class="stat-label">Active Targets</div>
+          <div class="stat-delta up">↑ 3 this week</div>
+        </div>
+        <div class="stat-card" style="--glow-color:var(--yellow)">
+          <div class="stat-num" style="color:var(--yellow)">4</div>
+          <div class="stat-label">In Pipeline</div>
+          <div class="stat-delta up">↑ BambooHR → CTO</div>
+        </div>
+        <div class="stat-card" style="--glow-color:var(--cyan)">
+          <div class="stat-num" style="color:var(--cyan)">23</div>
+          <div class="stat-label">Warm Contacts</div>
+          <div class="stat-delta neutral">2 mutual connections</div>
+        </div>
+        <div class="stat-card" style="--glow-color:var(--green)">
+          <div class="stat-num" style="color:var(--green)">87%</div>
+          <div class="stat-label">Response Rate</div>
+          <div class="stat-delta up">↑ vs 31% avg</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Battle Plan + AI feed -->
+    <div class="two-col">
+      <div>
+        <div class="section-header">
+          <div class="section-title">⚔️ Battle Plan</div>
+          <div class="section-meta" style="cursor:pointer;color:var(--accent)">+ Add Target</div>
+        </div>
+        <div class="battle-grid">
+          <div class="target-card hot">
+            <div class="target-company">BambooHR</div>
+            <div class="target-role">VP of Technology / CTO Track</div>
+            <div class="target-meta">
+              <span class="tag stage-cto">→ CTO Review</span>
+              <span class="tag salary">$184K–$269K</span>
+              <span class="tag location">Draper, UT</span>
+            </div>
+            <div class="progress-bar"><div class="progress-fill" style="width:75%"></div></div>
+          </div>
+          <div class="target-card hot">
+            <div class="target-company">Mutual of Omaha</div>
+            <div class="target-role">VP Software Engineering</div>
+            <div class="target-meta">
+              <span class="tag stage-screener">Assessment Sent</span>
+              <span class="tag salary">$220K–$325K</span>
+              <span class="tag location">Draper, UT</span>
+            </div>
+            <div class="progress-bar"><div class="progress-fill" style="width:55%"></div></div>
+          </div>
+          <div class="target-card">
+            <div class="target-company">Scribd</div>
+            <div class="target-role">Director, Customer Operations</div>
+            <div class="target-meta">
+              <span class="tag stage-applied">Outreach Sent</span>
+              <span class="tag location">Remote</span>
+            </div>
+            <div class="progress-bar"><div class="progress-fill" style="width:20%"></div></div>
+          </div>
+          <div class="target-card">
+            <div class="target-company">Pattern</div>
+            <div class="target-role">CTO / VP Engineering</div>
+            <div class="target-meta">
+              <span class="tag stage-applied">Draft Ready</span>
+              <span class="tag salary">~$150K–$180K</span>
+              <span class="tag location">Lehi, UT</span>
+            </div>
+            <div class="progress-bar"><div class="progress-fill" style="width:10%"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- AI Activity Feed -->
+      <div class="feed">
+        <div class="feed-header">
+          <span style="font-size:18px">🧠</span>
+          <span class="feed-title">AI Activity</span>
+          <span class="feed-live">LIVE</span>
+        </div>
+        <div class="feed-item">
+          <div class="feed-icon ai">🤖</div>
+          <div class="feed-body">
+            <div class="feed-agent">CLAUDE · 4 min ago</div>
+            <div class="feed-text">Logged your call with <strong>Kevin Charles</strong> at BambooHR. Updated pipeline stage to <strong>CTO Review</strong>. Set follow-up reminder for Monday.</div>
+          </div>
+        </div>
+        <div class="feed-item">
+          <div class="feed-icon ai">🤖</div>
+          <div class="feed-body">
+            <div class="feed-agent">CLAUDE · 31 min ago</div>
+            <div class="feed-text">Found <strong>2 mutual connections</strong> between you and Ryan Packer (BambooHR CTO). Added to your network map.</div>
+          </div>
+        </div>
+        <div class="feed-item">
+          <div class="feed-icon user">👤</div>
+          <div class="feed-body">
+            <div class="feed-agent">YOU · 1 hr ago</div>
+            <div class="feed-text">"Log that I talked to Kevin, he's passing me to the CTO. Interview felt really strong."</div>
+          </div>
+        </div>
+        <div class="feed-item">
+          <div class="feed-icon ai">🤖</div>
+          <div class="feed-body">
+            <div class="feed-agent">CLAUDE · 2 hr ago</div>
+            <div class="feed-text">Drafted outreach to <strong>Michael Lechtenberger</strong> (Mutual of Omaha CIO). Saved to Outreach queue awaiting your approval.</div>
+          </div>
+        </div>
+        <div class="feed-item">
+          <div class="feed-icon system">⚡</div>
+          <div class="feed-body">
+            <div class="feed-agent">SYSTEM · 3 hr ago</div>
+            <div class="feed-text"><strong>5 follow-ups</strong> are overdue. Claude has drafted responses for 3 of them.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Network -->
+    <div>
+      <div class="section-header">
+        <div class="section-title">🌐 Warm Network</div>
+        <div class="section-meta" style="cursor:pointer;color:var(--accent)">View all 23 →</div>
+      </div>
+      <div class="contacts-grid">
+        <div class="contact-card">
+          <div class="contact-avatar" style="background:linear-gradient(135deg,#6366f1,#8b5cf6)">K</div>
+          <div>
+            <div class="contact-name">Kevin Charles</div>
+            <div class="contact-title">Principal TA</div>
+            <div class="contact-company">BambooHR</div>
+            <div class="contact-warmth"><div class="warmth-dot filled"></div><div class="warmth-dot filled"></div><div class="warmth-dot filled"></div><div class="warmth-dot filled"></div><div class="warmth-dot"></div></div>
+          </div>
+        </div>
+        <div class="contact-card">
+          <div class="contact-avatar" style="background:linear-gradient(135deg,#06b6d4,#3b82f6)">M</div>
+          <div>
+            <div class="contact-name">Michael Lechtenberger</div>
+            <div class="contact-title">CIO</div>
+            <div class="contact-company">Mutual of Omaha</div>
+            <div class="contact-warmth"><div class="warmth-dot filled"></div><div class="warmth-dot filled"></div><div class="warmth-dot partial"></div><div class="warmth-dot"></div><div class="warmth-dot"></div></div>
+          </div>
+        </div>
+        <div class="contact-card">
+          <div class="contact-avatar" style="background:linear-gradient(135deg,#f97316,#eab308)">R</div>
+          <div>
+            <div class="contact-name">Ryan Packer</div>
+            <div class="contact-title">CTO</div>
+            <div class="contact-company">BambooHR</div>
+            <div class="contact-warmth"><div class="warmth-dot filled"></div><div class="warmth-dot partial"></div><div class="warmth-dot"></div><div class="warmth-dot"></div><div class="warmth-dot"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- end main warroom -->
+
+  <!-- ===== BATTLE PLAN VIEW ===== -->
+  <div class="main" id="view-battleplan" style="display:none">
+
+    <div>
+      <div class="section-header">
+        <div>
+          <div class="section-title">🎯 Today's Battle Plan</div>
+          <div class="section-meta" style="margin-top:4px">Generated by your AI · Thursday, April 2 · 6 actions queued</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <div class="ai-status"><div class="ai-dot"></div> Claude is ready</div>
+          <button onclick="document.getElementById('connectModal').style.display='flex'" style="background:var(--accent);color:#fff;border:none;padding:8px 16px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer">Ask AI to update plan</button>
+        </div>
+      </div>
+
+      <!-- AI Daily Briefing -->
+      <div style="background:linear-gradient(135deg,rgba(99,102,241,.12),rgba(139,92,246,.08));border:1px solid rgba(99,102,241,.3);border-radius:16px;padding:24px;margin-bottom:24px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+          <span style="font-size:20px">🤖</span>
+          <div>
+            <div style="font-weight:700;font-size:14px">Claude's Morning Brief</div>
+            <div style="font-size:11px;color:var(--dim)">Generated 7:32 AM · based on your pipeline + calendar</div>
+          </div>
+        </div>
+        <div style="font-size:13px;line-height:1.8;color:var(--text-dim)">
+          Good morning. You have <strong style="color:var(--text)">2 hot targets</strong> that need attention today.
+          BambooHR is expecting to hear back from Kevin by end of week — this is your most likely close.
+          Mutual of Omaha's assessment deadline is today at 5 PM. Five follow-ups are overdue, three of which I've drafted for you.
+          I'd recommend leading with BambooHR this morning, then clearing the follow-up queue this afternoon.
+          Your network grew by 2 this week — I found a mutual connection to Ryan Packer (BambooHR CTO) through your LinkedIn.
+        </div>
+      </div>
+
+      <!-- Action Queue -->
+      <div class="section-header"><div class="section-title">⚡ Action Queue</div><div class="section-meta">6 items · AI drafted 3</div></div>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:32px">
+
+        <div style="background:var(--card);border:1px solid rgba(234,179,8,.3);border-radius:12px;padding:16px 20px;display:flex;align-items:center;gap:16px">
+          <div style="width:8px;height:8px;border-radius:50%;background:var(--yellow);flex-shrink:0"></div>
+          <div style="flex:1">
+            <div style="font-weight:600;font-size:13px">Follow up with Kevin Charles — BambooHR</div>
+            <div style="font-size:12px;color:var(--dim);margin-top:2px">Screener passed. Kevin is presenting you to CTO today. Send a quick thank-you and signal continued interest.</div>
+          </div>
+          <div style="display:flex;gap:8px;flex-shrink:0">
+            <button style="background:rgba(255,255,255,.06);border:1px solid var(--border);color:var(--text);padding:6px 14px;border-radius:8px;font-size:12px;cursor:pointer">View Draft</button>
+            <button style="background:var(--green);border:none;color:#fff;padding:6px 14px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer">Send ✓</button>
+          </div>
+        </div>
+
+        <div style="background:var(--card);border:1px solid rgba(239,68,68,.3);border-radius:12px;padding:16px 20px;display:flex;align-items:center;gap:16px">
+          <div style="width:8px;height:8px;border-radius:50%;background:var(--red);flex-shrink:0"></div>
+          <div style="flex:1">
+            <div style="font-weight:600;font-size:13px">Complete Mutual of Omaha assessment — <span style="color:var(--red)">Due today 5 PM</span></div>
+            <div style="font-size:12px;color:var(--dim);margin-top:2px">Foundations Questionnaire submitted. Confirm completion in system and email Michael Lechtenberger directly.</div>
+          </div>
+          <div style="display:flex;gap:8px;flex-shrink:0">
+            <button style="background:rgba(255,255,255,.06);border:1px solid var(--border);color:var(--text);padding:6px 14px;border-radius:8px;font-size:12px;cursor:pointer">Mark Done</button>
+          </div>
+        </div>
+
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 20px;display:flex;align-items:center;gap:16px">
+          <div style="width:8px;height:8px;border-radius:50%;background:var(--cyan);flex-shrink:0"></div>
+          <div style="flex:1">
+            <div style="font-weight:600;font-size:13px">Send outreach to Tom Sharpless — Conspicuous</div>
+            <div style="font-size:12px;color:var(--dim);margin-top:2px">Draft ready in Gmail. D365 F&amp;O angle. Waiting on your send.</div>
+          </div>
+          <div style="display:flex;gap:8px;flex-shrink:0">
+            <button style="background:rgba(255,255,255,.06);border:1px solid var(--border);color:var(--text);padding:6px 14px;border-radius:8px;font-size:12px;cursor:pointer">View Draft</button>
+            <button style="background:var(--accent);border:none;color:#fff;padding:6px 14px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer">Open Gmail ↗</button>
+          </div>
+        </div>
+
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 20px;display:flex;align-items:center;gap:16px">
+          <div style="width:8px;height:8px;border-radius:50%;background:var(--accent);flex-shrink:0"></div>
+          <div style="flex:1">
+            <div style="font-weight:600;font-size:13px">Connect with Ryan Packer on LinkedIn — BambooHR CTO</div>
+            <div style="font-size:12px;color:var(--dim);margin-top:2px">2 mutual connections found. Claude suggests a warm intro through David Neeleman before your final interview.</div>
+          </div>
+          <div style="display:flex;gap:8px;flex-shrink:0">
+            <button style="background:rgba(255,255,255,.06);border:1px solid var(--border);color:var(--text);padding:6px 14px;border-radius:8px;font-size:12px;cursor:pointer">See Mutuals</button>
+            <button style="background:var(--accent);border:none;color:#fff;padding:6px 14px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer">Open LinkedIn ↗</button>
+          </div>
+        </div>
+
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 20px;display:flex;align-items:center;gap:16px;opacity:.6">
+          <div style="width:8px;height:8px;border-radius:50%;background:var(--dim);flex-shrink:0"></div>
+          <div style="flex:1">
+            <div style="font-weight:600;font-size:13px">Review Scribd application status</div>
+            <div style="font-size:12px;color:var(--dim);margin-top:2px">Outreach sent to Beck Kloss + CEO. No response yet (day 3). Claude will auto-flag if no reply by Friday.</div>
+          </div>
+          <div style="flex-shrink:0">
+            <span style="font-size:11px;color:var(--dim)">Monitoring</span>
+          </div>
+        </div>
+
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 20px;display:flex;align-items:center;gap:16px;opacity:.6">
+          <div style="width:8px;height:8px;border-radius:50%;background:var(--dim);flex-shrink:0"></div>
+          <div style="flex:1">
+            <div style="font-weight:600;font-size:13px">Send overdue follow-ups (3 drafted)</div>
+            <div style="font-size:12px;color:var(--dim);margin-top:2px">Dinu Parel (Parker Hannifin), Jim Gearhart (Gong), Ryan Byrd (Pattern). Claude has drafts ready.</div>
+          </div>
+          <div style="display:flex;gap:8px;flex-shrink:0">
+            <button style="background:var(--accent);border:none;color:#fff;padding:6px 14px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer">Review Drafts</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div><!-- end battleplan -->
+
+  <!-- ===== PIPELINE VIEW ===== -->
+  <div class="main" id="view-pipeline" style="display:none">
+
+    <div>
+      <div class="section-header">
+        <div class="section-title">📊 Pipeline</div>
+        <div class="section-meta">12 active targets · last 30 days</div>
+      </div>
+
+      <!-- Stage Funnel -->
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:32px">
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;text-align:center">
+          <div style="font-size:28px;font-weight:800;color:var(--text-dim)">12</div>
+          <div style="font-size:11px;font-weight:700;letter-spacing:1px;color:var(--dim);margin-top:4px;text-transform:uppercase">Targeted</div>
+          <div style="width:100%;height:3px;background:rgba(255,255,255,.08);border-radius:2px;margin-top:12px"><div style="height:100%;width:100%;background:var(--dim);border-radius:2px"></div></div>
+        </div>
+        <div style="background:var(--card);border:1px solid rgba(99,102,241,.3);border-radius:12px;padding:16px;text-align:center">
+          <div style="font-size:28px;font-weight:800;color:var(--accent)">8</div>
+          <div style="font-size:11px;font-weight:700;letter-spacing:1px;color:var(--dim);margin-top:4px;text-transform:uppercase">Outreach Sent</div>
+          <div style="width:100%;height:3px;background:rgba(255,255,255,.08);border-radius:2px;margin-top:12px"><div style="height:100%;width:66%;background:var(--accent);border-radius:2px"></div></div>
+        </div>
+        <div style="background:var(--card);border:1px solid rgba(6,182,212,.3);border-radius:12px;padding:16px;text-align:center">
+          <div style="font-size:28px;font-weight:800;color:var(--cyan)">5</div>
+          <div style="font-size:11px;font-weight:700;letter-spacing:1px;color:var(--dim);margin-top:4px;text-transform:uppercase">Responded</div>
+          <div style="width:100%;height:3px;background:rgba(255,255,255,.08);border-radius:2px;margin-top:12px"><div style="height:100%;width:42%;background:var(--cyan);border-radius:2px"></div></div>
+        </div>
+        <div style="background:var(--card);border:1px solid rgba(234,179,8,.3);border-radius:12px;padding:16px;text-align:center">
+          <div style="font-size:28px;font-weight:800;color:var(--yellow)">4</div>
+          <div style="font-size:11px;font-weight:700;letter-spacing:1px;color:var(--dim);margin-top:4px;text-transform:uppercase">Interviewing</div>
+          <div style="width:100%;height:3px;background:rgba(255,255,255,.08);border-radius:2px;margin-top:12px"><div style="height:100%;width:33%;background:var(--yellow);border-radius:2px"></div></div>
+        </div>
+        <div style="background:var(--card);border:1px solid rgba(34,197,94,.3);border-radius:12px;padding:16px;text-align:center">
+          <div style="font-size:28px;font-weight:800;color:var(--green)">1</div>
+          <div style="font-size:11px;font-weight:700;letter-spacing:1px;color:var(--dim);margin-top:4px;text-transform:uppercase">Offer Stage</div>
+          <div style="width:100%;height:3px;background:rgba(255,255,255,.08);border-radius:2px;margin-top:12px"><div style="height:100%;width:8%;background:var(--green);border-radius:2px"></div></div>
+        </div>
+      </div>
+
+      <!-- Charts row -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:32px">
+
+        <!-- Outreach Activity (bar chart) -->
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px">
+          <div style="font-size:13px;font-weight:700;margin-bottom:4px">Outreach Activity</div>
+          <div style="font-size:11px;color:var(--dim);margin-bottom:20px">Messages sent per week</div>
+          <div style="display:flex;align-items:flex-end;gap:8px;height:80px">
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
+              <div style="flex:1;width:100%;background:rgba(99,102,241,.2);border-radius:4px 4px 0 0;position:relative;min-height:8px">
+                <div style="position:absolute;bottom:0;left:0;right:0;height:30%;background:var(--accent);border-radius:4px 4px 0 0"></div>
+              </div>
+              <div style="font-size:10px;color:var(--dim)">W1</div>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
+              <div style="flex:1;width:100%;background:rgba(99,102,241,.2);border-radius:4px 4px 0 0;position:relative;min-height:8px">
+                <div style="position:absolute;bottom:0;left:0;right:0;height:50%;background:var(--accent);border-radius:4px 4px 0 0"></div>
+              </div>
+              <div style="font-size:10px;color:var(--dim)">W2</div>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
+              <div style="flex:1;width:100%;background:rgba(99,102,241,.2);border-radius:4px 4px 0 0;position:relative;min-height:8px">
+                <div style="position:absolute;bottom:0;left:0;right:0;height:45%;background:var(--accent);border-radius:4px 4px 0 0"></div>
+              </div>
+              <div style="font-size:10px;color:var(--dim)">W3</div>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
+              <div style="flex:1;width:100%;background:rgba(99,102,241,.2);border-radius:4px 4px 0 0;position:relative;min-height:8px">
+                <div style="position:absolute;bottom:0;left:0;right:0;height:90%;background:var(--accent);border-radius:4px 4px 0 0"></div>
+              </div>
+              <div style="font-size:10px;color:var(--dim)">W4</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Response Rate (donut) -->
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px">
+          <div style="font-size:13px;font-weight:700;margin-bottom:4px">Response Rate</div>
+          <div style="font-size:11px;color:var(--dim);margin-bottom:16px">vs industry average 31%</div>
+          <div style="display:flex;align-items:center;gap:20px">
+            <div style="position:relative;width:80px;height:80px;flex-shrink:0">
+              <svg width="80" height="80" viewBox="0 0 80 80">
+                <circle cx="40" cy="40" r="32" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="10"/>
+                <circle cx="40" cy="40" r="32" fill="none" stroke="var(--green)" stroke-width="10"
+                  stroke-dasharray="201" stroke-dashoffset="26" stroke-linecap="round"
+                  transform="rotate(-90 40 40)"/>
+              </svg>
+              <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;color:var(--green)">87%</div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <div><div style="font-size:11px;color:var(--dim)">You</div><div style="font-size:13px;font-weight:700;color:var(--green)">87%</div></div>
+              <div><div style="font-size:11px;color:var(--dim)">Avg</div><div style="font-size:13px;font-weight:700;color:var(--dim)">31%</div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Network Growth (line) -->
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px">
+          <div style="font-size:13px;font-weight:700;margin-bottom:4px">Network Growth</div>
+          <div style="font-size:11px;color:var(--dim);margin-bottom:16px">Warm contacts added per week</div>
+          <svg viewBox="0 0 200 80" style="width:100%;height:80px">
+            <defs>
+              <linearGradient id="lineGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="var(--cyan)" stop-opacity="0.3"/>
+                <stop offset="100%" stop-color="var(--cyan)" stop-opacity="0"/>
+              </linearGradient>
+            </defs>
+            <path d="M0,70 L40,58 L80,50 L120,35 L160,22 L200,12" stroke="var(--cyan)" stroke-width="2" fill="none" stroke-linecap="round"/>
+            <path d="M0,70 L40,58 L80,50 L120,35 L160,22 L200,12 L200,80 L0,80 Z" fill="url(#lineGrad)"/>
+            <circle cx="200" cy="12" r="4" fill="var(--cyan)"/>
+          </svg>
+          <div style="display:flex;justify-content:space-between;margin-top:4px">
+            <span style="font-size:10px;color:var(--dim)">W1</span>
+            <span style="font-size:10px;color:var(--dim)">W2</span>
+            <span style="font-size:10px;color:var(--dim)">W3</span>
+            <span style="font-size:10px;color:var(--dim)">W4</span>
+            <span style="font-size:10px;color:var(--cyan)">+23 total</span>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Target detail table -->
+      <div class="section-header"><div class="section-title">All Targets</div><div class="section-meta" style="cursor:pointer;color:var(--accent)">+ Add Target</div></div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:16px;overflow:hidden">
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead>
+            <tr style="border-bottom:1px solid var(--border)">
+              <th style="padding:12px 16px;text-align:left;font-size:11px;font-weight:700;letter-spacing:1px;color:var(--dim);text-transform:uppercase">Company</th>
+              <th style="padding:12px 16px;text-align:left;font-size:11px;font-weight:700;letter-spacing:1px;color:var(--dim);text-transform:uppercase">Role</th>
+              <th style="padding:12px 16px;text-align:left;font-size:11px;font-weight:700;letter-spacing:1px;color:var(--dim);text-transform:uppercase">Stage</th>
+              <th style="padding:12px 16px;text-align:left;font-size:11px;font-weight:700;letter-spacing:1px;color:var(--dim);text-transform:uppercase">Comp</th>
+              <th style="padding:12px 16px;text-align:left;font-size:11px;font-weight:700;letter-spacing:1px;color:var(--dim);text-transform:uppercase">Last Touch</th>
+              <th style="padding:12px 16px;text-align:left;font-size:11px;font-weight:700;letter-spacing:1px;color:var(--dim);text-transform:uppercase">Heat</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="border-bottom:1px solid var(--border);cursor:pointer" onmouseover="this.style.background='rgba(255,255,255,.02)'" onmouseout="this.style.background=''">
+              <td style="padding:12px 16px;font-weight:600">BambooHR</td>
+              <td style="padding:12px 16px;color:var(--dim)">VP Technology</td>
+              <td style="padding:12px 16px"><span class="tag stage-cto" style="font-size:10px">CTO Review</span></td>
+              <td style="padding:12px 16px;color:var(--green)">$184K–$269K</td>
+              <td style="padding:12px 16px;color:var(--dim)">Today</td>
+              <td style="padding:12px 16px"><span style="color:var(--yellow)">🔥🔥🔥</span></td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border);cursor:pointer" onmouseover="this.style.background='rgba(255,255,255,.02)'" onmouseout="this.style.background=''">
+              <td style="padding:12px 16px;font-weight:600">Mutual of Omaha</td>
+              <td style="padding:12px 16px;color:var(--dim)">VP Software Engineering</td>
+              <td style="padding:12px 16px"><span class="tag stage-screener" style="font-size:10px">Assessment</span></td>
+              <td style="padding:12px 16px;color:var(--green)">$220K–$325K</td>
+              <td style="padding:12px 16px;color:var(--dim)">Today</td>
+              <td style="padding:12px 16px"><span style="color:var(--yellow)">🔥🔥🔥</span></td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border);cursor:pointer" onmouseover="this.style.background='rgba(255,255,255,.02)'" onmouseout="this.style.background=''">
+              <td style="padding:12px 16px;font-weight:600">Scribd</td>
+              <td style="padding:12px 16px;color:var(--dim)">Director, Customer Ops</td>
+              <td style="padding:12px 16px"><span class="tag stage-applied" style="font-size:10px">Outreach Sent</span></td>
+              <td style="padding:12px 16px;color:var(--dim)">Remote</td>
+              <td style="padding:12px 16px;color:var(--dim)">3 days ago</td>
+              <td style="padding:12px 16px"><span style="color:var(--orange)">🔥🔥</span></td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border);cursor:pointer" onmouseover="this.style.background='rgba(255,255,255,.02)'" onmouseout="this.style.background=''">
+              <td style="padding:12px 16px;font-weight:600">Pattern</td>
+              <td style="padding:12px 16px;color:var(--dim)">CTO</td>
+              <td style="padding:12px 16px"><span class="tag stage-applied" style="font-size:10px">Draft Ready</span></td>
+              <td style="padding:12px 16px;color:var(--dim)">~$150K–$180K</td>
+              <td style="padding:12px 16px;color:var(--dim)">5 days ago</td>
+              <td style="padding:12px 16px"><span style="color:var(--dim)">🔥</span></td>
+            </tr>
+            <tr style="cursor:pointer" onmouseover="this.style.background='rgba(255,255,255,.02)'" onmouseout="this.style.background=''">
+              <td style="padding:12px 16px;font-weight:600">Parker Hannifin</td>
+              <td style="padding:12px 16px;color:var(--dim)">CDIO</td>
+              <td style="padding:12px 16px"><span class="tag stage-applied" style="font-size:10px">Draft Ready</span></td>
+              <td style="padding:12px 16px;color:var(--dim)">TBD</td>
+              <td style="padding:12px 16px;color:var(--dim)">5 days ago</td>
+              <td style="padding:12px 16px"><span style="color:var(--dim)">🔥</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div><!-- end pipeline -->
+
+</div><!-- end app -->
+
+<script>
+const aiInstructions = {
+  Claude: [
+    '<strong>Copy your API key</strong> above',
+    'Open <strong>Claude Desktop</strong> → <strong>Settings</strong> → <strong>Integrations</strong> → <strong>Add MCP Server</strong>. Name it "Core Line" and paste your key.',
+    'Start a new chat and say: <strong>"Connect to my Core Line battle plan"</strong> — Claude loads your targets, contacts, and pipeline automatically.'
+  ],
+  ChatGPT: [
+    '<strong>Copy your API key</strong> above',
+    'Open <strong>ChatGPT</strong> → click your profile → <strong>Settings</strong> → <strong>Connectors</strong> → <strong>Add</strong>. For the URL, paste: <code style="background:rgba(255,255,255,.1);padding:2px 6px;border-radius:4px">https://api.coreline.app/mcp</code>. For the API key, paste what you copied in step 1.',
+    'Start a new chat and say: <strong>"Connect to my Core Line battle plan"</strong> — ChatGPT loads your job search data automatically.'
+  ],
+  Gemini: [
+    '<strong>Copy your API key</strong> above',
+    'Open <strong>gemini.google.com</strong> → click the puzzle piece icon → <strong>Extensions</strong> → <strong>Add custom action</strong>. For the URL, paste: <code style="background:rgba(255,255,255,.1);padding:2px 6px;border-radius:4px">https://api.coreline.app/mcp</code>. For the API key, paste what you copied in step 1.',
+    'Start a new chat and say: <strong>"Connect to my Core Line battle plan"</strong> — Gemini syncs your targets, contacts, and pipeline.'
+  ],
+  OpenClaw: [
+    '<strong>Copy your API key</strong> above — your OpenClaw agent handles the rest',
+    'Open your OpenClaw agent and say: <strong>"Connect to my Core Line account"</strong> — paste the key when asked. No settings screen needed.',
+    'Now just talk to your agent naturally: <strong>"Log that I had a call with [company]"</strong> or <strong>"What follow-ups do I have this week?"</strong> — it updates Core Line in real time.'
+  ]
+};
+
+function showView(name) {
+  ['warroom','battleplan','pipeline'].forEach(v => {
+    document.getElementById('view-'+v).style.display = v === name ? '' : 'none';
+  });
+  document.querySelectorAll('.sidebar .nav-item').forEach(el => {
+    const label = el.textContent.trim().replace(/[^a-z]/gi,'').toLowerCase();
+    const match = name === 'warroom' ? 'warroom' : name === 'battleplan' ? 'battleplan' : 'pipeline';
+    const elName = label.startsWith('war') ? 'warroom' : label.startsWith('battle') ? 'battleplan' : label.startsWith('pipe') ? 'pipeline' : '';
+    el.classList.toggle('active', elName === match);
+  });
+}
+
+function selectAI(el){
+  document.querySelectorAll('.ai-option').forEach(o=>o.classList.remove('selected'));
+  el.classList.add('selected');
+  const name = el.querySelector('.ai-option-name').textContent.trim();
+  const steps = aiInstructions[name];
+  if(!steps) return;
+  const container = document.getElementById('connectSteps');
+  container.innerHTML = steps.map((text,i)=>`
+    <div class="step">
+      <div class="step-num">${i+1}</div>
+      <div class="step-text">${text}</div>
+    </div>`).join('');
+}
+</script>
+</body>
+</html>
