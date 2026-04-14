@@ -3132,51 +3132,6 @@ function renderBattlePlan() {
     });
   });
 
-  // Add battle plan priority actions if plan exists
-  if (cachedBattlePlan) {
-    const planData = cachedBattlePlan.plan_data || {};
-    const priorityActions = planData.priority_actions || [];
-    priorityActions.forEach((action, i) => {
-      actionQueue.push({
-        priority: 1,
-        dotColor: 'var(--accent)',
-        company: '',
-        role: '',
-        title: action,
-        description: 'From today\'s battle plan',
-        matchScore: null,
-        contactName: null,
-        type: 'planAction',
-        followupId: null,
-        jobId: null,
-        url: null,
-        draft: null,
-        daysInactive: 0,
-      });
-    });
-
-    // Plan contacts to reach
-    const planContacts = planData.contacts_to_reach || [];
-    planContacts.forEach(pc => {
-      actionQueue.push({
-        priority: 2,
-        dotColor: 'var(--cyan)',
-        company: pc.company || '',
-        role: '',
-        title: `${esc(pc.suggested_action || 'Reach out to')} ${esc(pc.name || '')}`,
-        description: pc.company ? `at ${pc.company}` : 'Network outreach',
-        matchScore: null,
-        contactName: pc.name,
-        type: 'contactAction',
-        followupId: null,
-        jobId: pc.job_id || null,
-        url: null,
-        draft: pc.draft_message || null,
-        daysInactive: 0,
-      });
-    });
-  }
-
   // Sort by priority
   actionQueue.sort((a, b) => a.priority - b.priority);
 
