@@ -167,6 +167,74 @@ router.get('/', async (req: Request, res: Response) => {
   }
 });
 
+// GET /jobs/:id/full - Full dossier: job + contacts (with per-contact outreach) + outreach + followups (with draft messages)
+router.get('/:id/full', async (req: Request, res: Response) => {
+  try {
+    const userId = req.userId!;
+    const { id } = req.params;
+
+    const [jobResult, contactsResult, outreachResult, followupsResult, profileResult] = await Promise.all([
+      supabase.from('v2_jobs').select('*').eq('id', id).eq('user_id', userId).single(),
+      supabase.from('v2_job_contacts').select('contact_id, relevance_notes, v2_contacts (*)').eq('job_id', id),
+      supabase.from('v2_outreach').select('*, v2_contacts (id, name, title)').eq('job_id', id).eq('user_id', userId).order('sent_at', { ascending: true }),
+      supabase.from('v2_followups').select('*, v2_contacts (id, name, title, company, linkedin_url, email)').eq('job_id', id).eq('user_id', userId).eq('status', 'pending').order('due_date', { ascending: true }),
+      supabase.from('v2_users').select('full_name, resume_text').eq('id', userId).single(),
+    ]);
+
+    if (jobResult.error) {
+      if (jobResult.error.code === 'PGRST116') { res.status(404).json({ error: 'Job not found' }); return; }
+      res.status(500).json({ error: jobResult.error.message }); return;
+    }
+
+    const job = jobResult.data;
+    const allOutreach = outreachResult.data || [];
+    const userName = profileResult.data?.full_name?.split(' ')[0] || 'there';
+
+    // Build contacts with per-contact outreach history
+    const contacts = (contactsResult.data || []).map((jc: any) => {
+      const contact = jc.v2_contacts;
+      const contactOutreach = allOutreach.filter((o: any) => o.contact_id === contact.id);
+      return { ...contact, relevance_notes: jc.relevance_notes, outreach_history: contactOutreach };
+    });
+
+    // Enrich followups with draft messages
+    const followups = (followupsResult.data || []).map((f: any) => {
+      const contact = f.v2_contacts;
+      const contactName = contact?.name?.split(' ')[0] || 'them';
+      const contactOutreach = allOutreach.filter((o: any) => o.contact_id === f.contact_id);
+      const lastMessage = contactOutreach.length > 0 ? contactOutreach[contactOutreach.length - 1] : null;
+      const channel = lastMessage?.channel || 'email';
+      const timerType = f.timer_type;
+
+      let draft_message = '';
+      if (timerType === 'interview_followup') {
+        draft_message = channel === 'linkedin'
+          ? `Hi ${contactName}, I wanted to check in on next steps for the ${job.title || 'role'} at ${job.company || 'your team'}. I really enjoyed our conversation and am excited about the opportunity. Please let me know if there is anything else you need from my end. Thanks, ${userName}`
+          : `Hi ${contactName},\n\nI wanted to follow up on our conversation about the ${job.title || 'role'} at ${job.company || 'your company'}. I am very excited about the opportunity and would love to hear about next steps whenever you have an update.\n\nPlease let me know if there is anything else I can provide.\n\nBest,\n${userName}`;
+      } else if (timerType === 'application_followup') {
+        draft_message = channel === 'linkedin'
+          ? `Hi ${contactName}, I recently applied for the ${job.title || 'role'} at ${job.company || 'your team'} and wanted to express my continued interest. I would love to connect for a brief chat about the role if you have a few minutes. Thanks, ${userName}`
+          : `Hi ${contactName},\n\nI recently applied for the ${job.title || 'role'} at ${job.company || 'your company'} and wanted to follow up to express my continued interest. I believe my background is a strong fit and would welcome the chance to discuss the role further.\n\nBest,\n${userName}`;
+      } else {
+        draft_message = channel === 'linkedin'
+          ? `Hi ${contactName}, I wanted to circle back on my message about the ${job.title || 'role'} at ${job.company || 'your team'}. I would love to connect for a quick chat if you have 15 minutes this week. Thanks, ${userName}`
+          : `Hi ${contactName},\n\nI wanted to follow up on my note about the ${job.title || 'role'} at ${job.company || 'your company'}. I am still very interested and would welcome a brief conversation if the timing works.\n\nBest,\n${userName}`;
+      }
+
+      return {
+        ...f,
+        draft_message,
+        draft_channel: channel,
+        draft_subject: lastMessage?.subject_line ? `Re: ${lastMessage.subject_line}` : `Following up: ${job.title} at ${job.company}`,
+      };
+    });
+
+    res.json({ job, contacts, outreach: allOutreach, followups });
+  } catch (error) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // GET /jobs/:id - Get single job
 router.get('/:id', async (req: Request, res: Response) => {
   try {

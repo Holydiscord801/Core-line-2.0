@@ -2411,11 +2411,13 @@ function renderBPItemDetail(item) {
     if (job.url) html += `<div><a href="${esc(job.url)}" target="_blank" style="color:var(--accent);text-decoration:none" onclick="event.stopPropagation()">View posting &#8599;</a></div>`;
     html += `</div></div>`;
 
-    // Decision Maker / Contact column
+    // Decision Maker / Contact column (with per-contact outreach from full dossier)
+    const dossierContacts = dossier.fullContacts || [];
+    const displayContacts = dossierContacts.length > 0 ? dossierContacts : linkedContacts;
     html += `<div class="card-detail-section">`;
-    html += `<h4>Decision Maker${linkedContacts.length > 1 ? 's (' + linkedContacts.length + ')' : ''}</h4>`;
-    if (linkedContacts.length > 0) {
-      linkedContacts.forEach(c => {
+    html += `<h4>Contacts (${displayContacts.length})</h4>`;
+    if (displayContacts.length > 0) {
+      displayContacts.forEach(c => {
         html += `<div style="font-size:12px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border)">`;
         if (c.linkedin_url) {
           html += `<div><a href="${esc(c.linkedin_url)}" target="_blank" style="color:var(--cyan);text-decoration:none;font-weight:600" onclick="event.stopPropagation()">${esc(c.name)}</a></div>`;
@@ -2434,6 +2436,20 @@ function renderBPItemDetail(item) {
           html += `<div style="margin-top:2px;font-size:11px">Warmth: <span style="color:${warmColor};font-weight:600">${c.warmth_score}</span></div>`;
         }
         if (c.last_contacted_at) html += `<div style="font-size:11px;color:var(--dim)">Last contact: ${timeAgo(c.last_contacted_at)}</div>`;
+        // Per-contact outreach history (from full dossier)
+        const cOutreach = c.outreach_history || [];
+        if (cOutreach.length > 0) {
+          html += `<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border)">`;
+          cOutreach.forEach(o => {
+            const hasResp = o.response_received;
+            html += `<div style="font-size:11px;color:var(--dim);margin-bottom:4px;padding-left:8px;border-left:2px solid ${hasResp ? 'var(--green)' : 'var(--dim)'}">`;
+            html += `<span style="color:var(--text)">${channelIcon(o.channel)} ${formatDate(o.sent_at)}</span>`;
+            if (hasResp) html += ` <span style="color:var(--green);font-weight:600">&#8592; replied</span>`;
+            if (o.outcome === 'interview_scheduled') html += ` <span style="color:var(--yellow);font-weight:600">&#8592; interview</span>`;
+            html += `</div>`;
+          });
+          html += `</div>`;
+        }
         html += `</div>`;
       });
     } else {
@@ -2463,14 +2479,26 @@ function renderBPItemDetail(item) {
       html += `<div style="margin-top:8px">${applyHtml}</div>`;
     }
 
-    // ── Outreach History (loaded async via dossier) ──
+    // ── Job Description (collapsible) ──
+    if (job.job_description) {
+      const jdId = 'bp-jd-' + job.id.replace(/-/g, '');
+      html += `<div class="card-detail-section" style="margin-top:8px">`;
+      html += `<div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="event.stopPropagation();var el=document.getElementById('${jdId}');el.style.display=el.style.display==='none'?'block':'none';this.querySelector('span:last-child').textContent=el.style.display==='none'?'&#9656; Show':'&#9662; Hide'">`;
+      html += `<h4>Job Description</h4>`;
+      html += `<span style="font-size:11px;color:var(--accent)">&#9656; Show</span>`;
+      html += `</div>`;
+      html += `<div id="${jdId}" style="display:none;font-size:12px;color:var(--dim);line-height:1.7;white-space:pre-wrap;max-height:400px;overflow-y:auto;padding:12px;background:rgba(255,255,255,.02);border-radius:6px;border:1px solid var(--border);margin-top:6px">${esc(job.job_description)}</div>`;
+      html += `</div>`;
+    }
+
+    // ── Outreach Timeline (loaded async via dossier) ──
     const dossier = dossierCache[job.id] || {};
     const loaded = !!dossierCache[job.id];
     const outreach = dossier.outreach || [];
     if (outreach.length > 0) {
       html += `<div class="card-detail-section" style="margin-top:8px">`;
-      html += `<h4>Outreach History (${outreach.length})</h4>`;
-      [...outreach].sort((a, b) => new Date(b.sent_at) - new Date(a.sent_at)).slice(0, 3).forEach(o => {
+      html += `<h4>Outreach Timeline (${outreach.length})</h4>`;
+      [...outreach].sort((a, b) => new Date(a.sent_at) - new Date(b.sent_at)).forEach(o => {
         const cName = o.v2_contacts?.name || 'Unknown';
         const hasResp = o.response_received;
         html += `<div style="margin-bottom:8px;padding:8px;background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:8px;border-left:3px solid ${hasResp ? 'var(--green)' : 'var(--dim)'}">`;
@@ -2479,11 +2507,11 @@ function renderBPItemDetail(item) {
         html += `<span style="font-size:11px;color:var(--dim)">${formatDate(o.sent_at)}</span>`;
         html += `</div>`;
         if (o.subject_line) html += `<div style="font-size:11px;color:var(--dim)">Subject: ${esc(o.subject_line)}</div>`;
-        if (o.message_text) html += `<div style="font-size:11px;color:var(--dim);margin-top:3px;max-height:50px;overflow:hidden;white-space:pre-wrap">${esc(o.message_text.substring(0, 200))}${o.message_text.length > 200 ? '...' : ''}</div>`;
+        if (o.message_text) html += `<div style="font-size:11px;color:var(--dim);margin-top:3px;max-height:80px;overflow:hidden;white-space:pre-wrap">${esc(o.message_text.substring(0, 400))}${o.message_text.length > 400 ? '...' : ''}</div>`;
         if (hasResp) {
           html += `<div style="margin-top:4px;padding:4px 6px;background:rgba(6,182,212,.06);border:1px solid rgba(6,182,212,.15);border-radius:4px">`;
-          html += `<span style="font-size:10px;font-weight:700;color:var(--cyan);text-transform:uppercase;letter-spacing:1px">Reply</span> `;
-          if (o.response_text) html += `<span style="font-size:11px;color:var(--text)">${esc(o.response_text.substring(0, 150))}${o.response_text.length > 150 ? '...' : ''}</span>`;
+          html += `<span style="font-size:10px;font-weight:700;color:var(--cyan);text-transform:uppercase;letter-spacing:1px">Reply${o.outcome ? ' &#8212; ' + esc(o.outcome) : ''} ${o.response_at ? '(' + formatDate(o.response_at) + ')' : ''}</span>`;
+          if (o.response_text) html += `<div style="font-size:11px;color:var(--text);margin-top:4px;white-space:pre-wrap">${esc(o.response_text.substring(0, 400))}${o.response_text.length > 400 ? '...' : ''}</div>`;
           html += `</div>`;
         }
         html += `</div>`;
@@ -2493,17 +2521,33 @@ function renderBPItemDetail(item) {
       html += `<div style="margin-top:8px;font-size:12px;color:var(--dim);font-style:italic">Loading outreach history...</div>`;
     }
 
-    // ── Follow-ups (from dossier) ──
-    const followups = dossier.followups || [];
-    if (followups.length > 0) {
+    // ── Follow-ups with draft messages ──
+    const enrichedFollowups = dossier.fullFollowups || [];
+    const displayFollowups = enrichedFollowups.length > 0 ? enrichedFollowups : (dossier.followups || []);
+    if (displayFollowups.length > 0) {
       const today = new Date().toISOString().split('T')[0];
       html += `<div class="card-detail-section" style="margin-top:8px">`;
-      html += `<h4>Follow-ups (${followups.length})</h4>`;
-      [...followups].sort((a, b) => (a.due_date || '').localeCompare(b.due_date || '')).slice(0, 3).forEach(f => {
+      html += `<h4>Follow-ups (${displayFollowups.length})</h4>`;
+      [...displayFollowups].sort((a, b) => (a.due_date || '').localeCompare(b.due_date || '')).forEach(f => {
         const fOverdue = f.due_date && f.due_date < today;
-        html += `<div style="margin-bottom:6px;padding:6px 8px;background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:6px;border-left:3px solid ${fOverdue ? 'var(--red)' : 'var(--yellow)'}">`;
+        const fContact = f.v2_contacts?.name || '';
+        html += `<div style="margin-bottom:6px;padding:8px 10px;background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:6px;border-left:3px solid ${fOverdue ? 'var(--red)' : 'var(--yellow)'}">`;
+        html += `<div style="display:flex;justify-content:space-between;align-items:center">`;
         html += `<span style="font-size:12px;font-weight:600;color:${fOverdue ? 'var(--red)' : 'var(--text)'}">${fOverdue ? 'OVERDUE' : 'Due'}: ${formatDate(f.due_date)}</span>`;
-        html += `<div style="font-size:11px;color:var(--dim);margin-top:2px">${esc(f.reason || 'Follow up')}</div>`;
+        if (f.draft_channel) html += `<span style="font-size:9px;font-weight:600;padding:2px 6px;border-radius:4px;color:var(--accent);background:rgba(99,102,241,.1)">${esc(f.draft_channel)}</span>`;
+        html += `</div>`;
+        html += `<div style="font-size:11px;color:var(--dim);margin-top:2px">${esc(f.reason || 'Follow up')}${fContact ? ' &mdash; ' + esc(fContact) : ''}</div>`;
+        if (f.draft_message) {
+          const fDraftKey = cacheDraft(f.draft_message);
+          html += `<div style="margin-top:6px;padding:8px;background:rgba(99,102,241,.04);border:1px solid rgba(99,102,241,.15);border-radius:6px">`;
+          html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">`;
+          html += `<span style="font-size:10px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:1px">Draft</span>`;
+          html += `<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();navigator.clipboard.writeText(_draftCache['${fDraftKey}']);showToast('Draft copied','success')" style="font-size:9px;padding:2px 8px">Copy</button>`;
+          html += `</div>`;
+          if (f.draft_subject) html += `<div style="font-size:11px;color:var(--dim);margin-bottom:4px">Subject: ${esc(f.draft_subject)}</div>`;
+          html += `<div style="font-size:11px;color:var(--dim);line-height:1.6;white-space:pre-wrap;max-height:100px;overflow-y:auto">${esc(f.draft_message.substring(0, 500))}</div>`;
+          html += `</div>`;
+        }
         html += `</div>`;
       });
       html += `</div>`;
@@ -2566,15 +2610,22 @@ function renderBPItemDetail(item) {
     }
     html += `</div>`;
 
-    // ── Draft follow-up message (from follow-up data or outreach_draft) ──
-    const draftMessage = followup.draft_message || (fullJob.outreach_draft ? fullJob.outreach_draft : null);
+    // ── Draft follow-up message (from full dossier, follow-up data, or outreach_draft) ──
+    const dossierFollowups = fullJob.id ? (dossierCache[fullJob.id]?.fullFollowups || []) : [];
+    const enrichedFU = dossierFollowups.find(ef => ef.id === followup.id);
+    const draftMessage = enrichedFU?.draft_message || followup.draft_message || (fullJob.outreach_draft ? fullJob.outreach_draft : null);
+    const draftSubject = enrichedFU?.draft_subject || null;
+    const draftChannel = enrichedFU?.draft_channel || null;
     if (draftMessage) {
       html += `<div style="background:rgba(99,102,241,.06);border:1px solid rgba(99,102,241,.2);border-radius:10px;padding:14px;margin-bottom:8px">`;
       html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">`;
-      html += `<h4 style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:1px;margin:0">Draft Message</h4>`;
+      html += `<h4 style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:1px;margin:0">Draft Message${draftChannel ? ' (' + esc(draftChannel) + ')' : ''}</h4>`;
       const dmKey = cacheDraft(draftMessage);
+      html += `<div style="display:flex;gap:6px">`;
       html += `<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();navigator.clipboard.writeText(_draftCache['${dmKey}']);showToast('Message copied','success')" style="font-size:10px">Copy</button>`;
-      html += `</div>`;
+      html += `<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();window.open('https://mail.google.com/mail/?view=cm','_blank')" style="font-size:10px">Open Gmail</button>`;
+      html += `</div></div>`;
+      if (draftSubject) html += `<div style="font-size:11px;color:var(--dim);margin-bottom:6px">Subject: <strong style="color:var(--text)">${esc(draftSubject)}</strong></div>`;
       html += `<div style="font-size:12px;color:var(--dim);line-height:1.7;white-space:pre-wrap;max-height:140px;overflow-y:auto;padding:10px;background:rgba(255,255,255,.02);border-radius:6px;border-left:2px solid rgba(99,102,241,.3)">${esc(draftMessage)}</div>`;
       html += `</div>`;
     }
@@ -2613,26 +2664,31 @@ function renderBPItemDetail(item) {
 
     html += `</div>`; // end card-detail-row
 
-    // ── Last Outreach ──
-    if (lastOutreach) {
+    // ── Outreach Timeline ──
+    if (outreach.length > 0) {
       html += `<div class="card-detail-section" style="margin-top:8px">`;
-      html += `<h4>Last Outreach</h4>`;
-      const cName = lastOutreach.v2_contacts?.name || 'Unknown';
-      const hasResp = lastOutreach.response_received;
-      html += `<div style="padding:8px;background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:8px;border-left:3px solid ${hasResp ? 'var(--green)' : 'var(--dim)'}">`;
-      html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">`;
-      html += `<span style="font-size:12px;font-weight:600;color:var(--text)">${channelIcon(lastOutreach.channel)} ${channelLabel(lastOutreach.channel)} &#8594; ${esc(cName)}</span>`;
-      html += `<span style="font-size:11px;color:var(--dim)">${formatDate(lastOutreach.sent_at)}</span>`;
-      html += `</div>`;
-      if (lastOutreach.subject_line) html += `<div style="font-size:11px;color:var(--dim)">Subject: ${esc(lastOutreach.subject_line)}</div>`;
-      if (lastOutreach.message_text) html += `<div style="font-size:11px;color:var(--dim);margin-top:3px;max-height:50px;overflow:hidden;white-space:pre-wrap">${esc(lastOutreach.message_text.substring(0, 200))}${lastOutreach.message_text.length > 200 ? '...' : ''}</div>`;
-      if (hasResp && lastOutreach.response_text) {
-        html += `<div style="margin-top:4px;padding:4px 6px;background:rgba(6,182,212,.06);border:1px solid rgba(6,182,212,.15);border-radius:4px">`;
-        html += `<span style="font-size:10px;font-weight:700;color:var(--cyan);text-transform:uppercase;letter-spacing:1px">Reply</span> `;
-        html += `<span style="font-size:11px;color:var(--text)">${esc(lastOutreach.response_text.substring(0, 150))}${lastOutreach.response_text.length > 150 ? '...' : ''}</span>`;
+      html += `<h4>Outreach Timeline (${outreach.length})</h4>`;
+      [...outreach].sort((a, b) => new Date(a.sent_at) - new Date(b.sent_at)).forEach(o => {
+        const cName = o.v2_contacts?.name || 'Unknown';
+        const hasResp = o.response_received;
+        html += `<div style="margin-bottom:8px;padding:8px;background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:8px;border-left:3px solid ${hasResp ? 'var(--green)' : 'var(--dim)'}">`;
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">`;
+        html += `<span style="font-size:12px;font-weight:600;color:var(--text)">${channelIcon(o.channel)} ${channelLabel(o.channel)} &#8594; ${esc(cName)}</span>`;
+        html += `<span style="font-size:11px;color:var(--dim)">${formatDate(o.sent_at)}</span>`;
         html += `</div>`;
-      }
-      html += `</div></div>`;
+        if (o.subject_line) html += `<div style="font-size:11px;color:var(--dim)">Subject: ${esc(o.subject_line)}</div>`;
+        if (o.message_text) html += `<div style="font-size:11px;color:var(--dim);margin-top:3px;max-height:80px;overflow:hidden;white-space:pre-wrap">${esc(o.message_text.substring(0, 400))}${o.message_text.length > 400 ? '...' : ''}</div>`;
+        if (hasResp) {
+          html += `<div style="margin-top:4px;padding:4px 6px;background:rgba(6,182,212,.06);border:1px solid rgba(6,182,212,.15);border-radius:4px">`;
+          html += `<span style="font-size:10px;font-weight:700;color:var(--cyan);text-transform:uppercase;letter-spacing:1px">Reply${o.outcome ? ' &#8212; ' + esc(o.outcome) : ''} ${o.response_at ? '(' + formatDate(o.response_at) + ')' : ''}</span>`;
+          if (o.response_text) html += `<div style="font-size:11px;color:var(--text);margin-top:4px;white-space:pre-wrap">${esc(o.response_text.substring(0, 400))}${o.response_text.length > 400 ? '...' : ''}</div>`;
+          html += `</div>`;
+        }
+        html += `</div>`;
+      });
+      html += `</div>`;
+    } else if (!dossierCache[fullJob.id]) {
+      html += `<div style="margin-top:8px;font-size:12px;color:var(--dim);font-style:italic">Loading outreach history...</div>`;
     }
 
     if (followup.notes) {
@@ -4540,10 +4596,11 @@ function renderTimelineBody(sequences) {
 
 async function loadDossierForCard(jobId) {
   try {
-    const [outreachRes, sequencesRes, followupsRes] = await Promise.all([
+    const [outreachRes, sequencesRes, followupsRes, fullRes] = await Promise.all([
       api('/outreach?job_id=' + jobId),
       api('/outreach/sequences?job_id=' + jobId),
       api('/followups?days_ahead=90'),
+      api('/jobs/' + jobId + '/full').catch(() => null),
     ]);
 
     const outreach = outreachRes?.outreach || [];
@@ -4551,7 +4608,11 @@ async function loadDossierForCard(jobId) {
     const allFollowups = Array.isArray(followupsRes) ? followupsRes : (followupsRes?.followups || []);
     const followups = allFollowups.filter(f => f.job_id === jobId);
 
-    dossierCache[jobId] = { outreach, sequences, followups };
+    // Merge full dossier data (contacts with per-contact outreach, enriched followups)
+    const fullContacts = fullRes?.contacts || [];
+    const fullFollowups = fullRes?.followups || [];
+
+    dossierCache[jobId] = { outreach, sequences, followups, fullContacts, fullFollowups };
     timelineCache[jobId] = sequences;
 
     // Targeted DOM update for whichever view is showing this job
@@ -4569,7 +4630,7 @@ async function loadDossierForCard(jobId) {
     });
   } catch (err) {
     if (!dossierCache[jobId]) {
-      dossierCache[jobId] = { outreach: [], sequences: [], followups: [] };
+      dossierCache[jobId] = { outreach: [], sequences: [], followups: [], fullContacts: [], fullFollowups: [] };
       const job = cachedJobs.find(j => j.id === jobId);
       if (job) {
         ['wr', 'pl', 'bp'].forEach(prefix => {

@@ -1370,7 +1370,7 @@ async function getFollowupsDue(daysAhead: number = 7): Promise<any[]> {
   // Load user profile for personalization context
   const { data: profile } = await supabase
     .from('v2_users')
-    .select('full_name, current_title, resume_text')
+    .select('full_name, resume_text')
     .eq('id', userId)
     .single();
 
