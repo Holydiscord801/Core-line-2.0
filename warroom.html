@@ -2280,6 +2280,7 @@ async function renderWarRoomFollowupAlert() {
 // ============================================
 
 function toggleActionItem(itemId) {
+  alert('toggleActionItem fired: ' + JSON.stringify(Array.from(arguments)));
   expandedActionItemId = expandedActionItemId === itemId ? null : itemId;
   try {
     renderBattlePlan();
@@ -2556,6 +2557,7 @@ function showDraftModal(draft) {
 }
 
 function renderBattlePlan() {
+  try {
   const briefingEl = document.getElementById('battleplanBriefing');
   const queueEl = document.getElementById('actionQueue');
   const metaEl = document.getElementById('battleplan-meta');
@@ -2921,6 +2923,10 @@ function renderBattlePlan() {
         ${detail}
       </div>`;
   }).join('');
+  } catch (e) {
+    document.body.insertAdjacentHTML('afterbegin', '<div style="background:red;color:white;padding:20px;position:fixed;top:0;left:0;right:0;z-index:99999;font-size:18px">ERROR in renderBattlePlan: ' + e.message + '</div>');
+    console.error('renderBattlePlan FATAL:', e);
+  }
 }
 
 // ============================================
